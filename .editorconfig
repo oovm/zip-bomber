@@ -1,0 +1,14 @@
+[*]
+charset = utf-8
+end_of_line = lf
+
+[*.yaml]
+indent_style = space
+indent_size = 2
+
+[*.html]
+trim_trailing_whitespace = false
+
+[*.{json,toml}]
+indent_style = space
+indent_size = 4

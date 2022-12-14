@@ -1,0 +1,26 @@
+[package]
+name = "zb-napi"
+version.workspace = true
+description = "Node-API bindings for zb recursive ZIP generation"
+readme = "readme.md"
+homepage = "https://github.com/notedge/zip-bomber"
+repository = "https://github.com/notedge/zip-bomber"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+napi = { workspace = true }
+napi-derive = { workspace = true }
+zb-generate = { workspace = true }
+zb-types = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+napi-build = "2"
+
+[package.metadata.napi]
+name = "zip-bomber"

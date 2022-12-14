@@ -1,0 +1,11 @@
+{
+    "name": "@sxo/zip-bomber-unknown-wasm32",
+    "version": "0.0.1",
+    "description": "zip-bomber wasm-pack artifact for wasm32-unknown-unknown",
+    "type": "module",
+    "license": "MPL-2.0",
+    "main": "./lib/zb_wasm.js",
+    "types": "./lib/zb_wasm.d.ts",
+    "files": ["lib", "readme.md"],
+    "sideEffects": ["./lib/zb_wasm.js"]
+}

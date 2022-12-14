@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const jiti = require("jiti")(import.meta.url);
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const { runCli } = jiti(join(root, "src/cli/main.ts"));
+await runCli(process.argv.slice(2));

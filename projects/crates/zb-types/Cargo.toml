@@ -1,0 +1,25 @@
+[package]
+name = "zb-types"
+version.workspace = true
+authors.workspace = true
+description = "Shared contracts for zb recursive ZIP / zip-bomb generation"
+categories = ["encoding"]
+homepage = "https://github.com/notedge/zip-bomber"
+repository = "https://github.com/notedge/zip-bomber"
+documentation = "https://docs.rs/zb-types"
+readme = "readme.md"
+license.workspace = true
+edition.workspace = true
+exclude = ["package.json", "tests/**"]
+
+[lib]
+doctest = false
+
+[dependencies]
+serde = { workspace = true }
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true

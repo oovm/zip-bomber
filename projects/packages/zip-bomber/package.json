@@ -1,0 +1,48 @@
+{
+    "name": "@sxo/zip-bomber",
+    "version": "0.0.1",
+    "description": "Generate recursive ZIP / zip-bomb variants (bomb, quine, loopy, fractal)",
+    "type": "module",
+    "license": "MPL-2.0",
+    "bin": {
+        "zip-bomber": "bin/zip-bomber"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": "./src/index.ts",
+        "./node": "./src/node/index.ts",
+        "./wasm": "./src/wasm/index.ts",
+        "./cli": "./src/cli/index.ts"
+    },
+    "files": [
+        "bin",
+        "readme.md",
+        "src"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test:e2e": "tsx --test tests/**/*.test.ts"
+    },
+    "dependencies": {
+        "@sxo/zip-bomber-unknown-wasm32": "workspace:*",
+        "@vmz/commander": "^0.2.0",
+        "jiti": "^2.4.2"
+    },
+    "optionalDependencies": {
+        "@sxo/zip-bomber-darwin-arm64": "workspace:*",
+        "@sxo/zip-bomber-darwin-x64": "workspace:*",
+        "@sxo/zip-bomber-linux-arm64": "workspace:*",
+        "@sxo/zip-bomber-linux-x64": "workspace:*",
+        "@sxo/zip-bomber-win32-x64": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.10",
+        "tsx": "^4.19.3",
+        "typescript": "^5.8.3"
+    }
+}

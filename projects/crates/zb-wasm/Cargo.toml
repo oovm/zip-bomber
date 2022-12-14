@@ -1,0 +1,18 @@
+[package]
+name = "zb-wasm"
+version.workspace = true
+authors.workspace = true
+description = "WebAssembly bindings for zb recursive ZIP generation"
+license.workspace = true
+edition.workspace = true
+readme = "readme.md"
+homepage = "https://github.com/notedge/zip-bomber"
+repository = "https://github.com/notedge/zip-bomber"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = { workspace = true }
+zb-generate = { workspace = true }
+zb-types = { workspace = true }

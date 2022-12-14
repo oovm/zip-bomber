@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = ["projects/crates/*"]
+default-members = [
+	"projects/crates/zb-types",
+	"projects/crates/zb-generate",
+	"projects/crates/zb-napi",
+]
+
+[workspace.package]
+version = "0.0.1"
+authors = ["Aster <192607617@qq.com>"]
+license = "MPL-2.0"
+edition = "2021"
+
+[workspace.dependencies]
+zb-types = { path = "projects/crates/zb-types" }
+zb-generate = { path = "projects/crates/zb-generate" }
+zb-napi = { path = "projects/crates/zb-napi" }
+zb-wasm = { path = "projects/crates/zb-wasm" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wasm-bindgen = "0.2"
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+
+[profile.release]
+lto = true
+opt-level = "s"
+
+[workspace.metadata.release]
+push = false
+tag = false

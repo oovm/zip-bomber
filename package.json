@@ -1,0 +1,20 @@
+{
+    "private": true,
+    "packageManager": "pnpm@9.15.0",
+    "scripts": {
+        "build": "cargo build --release",
+        "build:napi": "node scripts/build-napi.mjs",
+        "build:wasm": "wasm-pack build projects/crates/zb-wasm --target web --out-dir ../../packages/zip-bomber-unknown-wasm32/lib --release",
+        "test": "cargo test --release && pnpm --filter @sxo/zip-bomber test:e2e",
+        "test:e2e": "pnpm --filter @sxo/zip-bomber test:e2e",
+        "typecheck": "pnpm --filter @sxo/zip-bomber typecheck",
+        "placeholder": "nifty publish --placeholder --dry-run",
+        "placeholder:publish": "nifty publish --placeholder",
+        "placeholder:trust": "nifty trust"
+    },
+    "devDependencies": {
+        "@doki-land/nifty": "^0.0.12",
+        "@sxo/zip-bomber": "workspace:*",
+        "@napi-rs/cli": "^2.18.4"
+    }
+}
