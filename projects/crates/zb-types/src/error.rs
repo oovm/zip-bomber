@@ -1,9 +1,76 @@
-//! Stable error codes for zb.
+//! Stable error codes and categories for zb.
 
 use std::fmt;
 
-/// Stable machine-readable error code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+/// Stable public error category (Living `04`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorCategory {
+    /// Request failed schema / path / limits checks.
+    InvalidRequest,
+    /// Container not supported.
+    UnsupportedContainer,
+    /// Variant not supported.
+    UnsupportedVariant,
+    /// Topology class not supported for the profile.
+    UnsupportedTopology,
+    /// Profile id unknown or mismatched.
+    UnsupportedProfile,
+    /// Native / WASM backend unavailable.
+    BackendUnavailable,
+    /// Binding ABI / schema mismatch.
+    BindingMismatch,
+    /// Budget exhausted.
+    ResourceLimited,
+    /// Finite template search ended without a solution.
+    SearchExhausted,
+    /// Fixed template equations were unsatisfiable.
+    ConstraintUnsatisfied,
+    /// Loopy period does not match the contract.
+    PeriodMismatch,
+    /// Independent verification failed.
+    VerificationFailed,
+    /// Cooperative cancel.
+    Cancelled,
+    /// Internal invariant broke.
+    InternalError,
+    /// Algorithm path is not wired yet (template).
+    NotImplemented,
+}
+
+impl ErrorCategory {
+    /// Stable string form.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::UnsupportedContainer => "unsupported_container",
+            Self::UnsupportedVariant => "unsupported_variant",
+            Self::UnsupportedTopology => "unsupported_topology",
+            Self::UnsupportedProfile => "unsupported_profile",
+            Self::BackendUnavailable => "backend_unavailable",
+            Self::BindingMismatch => "binding_mismatch",
+            Self::ResourceLimited => "resource_limited",
+            Self::SearchExhausted => "search_exhausted",
+            Self::ConstraintUnsatisfied => "constraint_unsatisfied",
+            Self::PeriodMismatch => "period_mismatch",
+            Self::VerificationFailed => "verification_failed",
+            Self::Cancelled => "cancelled",
+            Self::InternalError => "internal_error",
+            Self::NotImplemented => "not_implemented",
+        }
+    }
+}
+
+impl fmt::Display for ErrorCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Stable machine-readable error code (legacy template codes retained).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorCode {
     /// Variant id is unknown.
     UnknownVariant,
@@ -25,6 +92,16 @@ impl ErrorCode {
             Self::Internal => "ZB_INTERNAL",
         }
     }
+
+    /// Map to public category.
+    pub const fn category(self) -> ErrorCategory {
+        match self {
+            Self::UnknownVariant => ErrorCategory::UnsupportedVariant,
+            Self::InvalidTopology => ErrorCategory::InvalidRequest,
+            Self::NotImplemented => ErrorCategory::NotImplemented,
+            Self::Internal => ErrorCategory::InternalError,
+        }
+    }
 }
 
 impl fmt::Display for ErrorCode {
@@ -34,8 +111,10 @@ impl fmt::Display for ErrorCode {
 }
 
 /// zb fallible result error.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZbError {
+    /// Public category.
+    pub category: ErrorCategory,
     /// Stable code.
     pub code: ErrorCode,
     /// Human message.
@@ -43,9 +122,10 @@ pub struct ZbError {
 }
 
 impl ZbError {
-    /// Construct an error.
+    /// Construct an error from a legacy code.
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
+            category: code.category(),
             code,
             message: message.into(),
         }
@@ -59,7 +139,7 @@ impl ZbError {
 
 impl fmt::Display for ZbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.code, self.message)
+        write!(f, "{} ({}): {}", self.category, self.code, self.message)
     }
 }
 

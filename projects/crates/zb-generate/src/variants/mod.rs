@@ -5,19 +5,21 @@ mod fractal;
 mod loopy;
 mod quine;
 
-use zb_types::{GenerateReport, GenerateRequest, VariantKind, ZbResult};
+use zb_types::{
+    ArtifactSet, GenerateReport, GenerateRequest, VariantKind, ZbResult,
+};
 
-/// Generated archive bytes plus report.
+/// Generated archive set plus report.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Artifact {
-    /// Archive bytes when implemented (empty for stubs).
-    pub bytes: Vec<u8>,
+pub struct ArtifactBundle {
+    /// Artifact set (empty for stubs).
+    pub artifacts: ArtifactSet,
     /// Structured report.
     pub report: GenerateReport,
 }
 
 /// Dispatch to the variant driver.
-pub fn dispatch(request: GenerateRequest) -> ZbResult<Artifact> {
+pub fn dispatch(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
     match request.variant {
         VariantKind::Bomb => bomb::generate(request),
         VariantKind::Quine => quine::generate(request),
@@ -26,15 +28,15 @@ pub fn dispatch(request: GenerateRequest) -> ZbResult<Artifact> {
     }
 }
 
-pub(super) fn stub_artifact(request: GenerateRequest) -> Artifact {
+pub(super) fn stub_bundle(request: GenerateRequest) -> ArtifactBundle {
     let report = GenerateReport::not_implemented(
         request.variant,
         request.crc_strategy,
         request.topology.nodes.len(),
         request.topology.edges.len(),
     );
-    Artifact {
-        bytes: Vec::new(),
+    ArtifactBundle {
+        artifacts: ArtifactSet::empty_stub("root"),
         report,
     }
 }

@@ -1,11 +1,13 @@
-//! `zb.report/v1` shaped generation report.
+//! `zb.report/v1` (template) and `zb.report/v2` (design target) reports.
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CrcStrategy, VariantKind};
+use crate::{ContainerKind, CrcStrategy, VariantKind};
 
-/// Report schema id.
-pub const REPORT_SCHEMA: &str = "zb.report/v1";
+/// Legacy template report schema.
+pub const REPORT_SCHEMA_V1: &str = "zb.report/v1";
+/// Design-target report schema (fields freeze before algorithm gates).
+pub const REPORT_SCHEMA_V2: &str = "zb.report/v2";
 
 /// High-level generation status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,8 +35,10 @@ impl ReportStatus {
 /// Structured generation report shared by CLI / N-API / WASM.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerateReport {
-    /// Always [`REPORT_SCHEMA`].
+    /// Schema id (`zb.report/v1` during template; migrate to v2 when frozen).
     pub schema: String,
+    /// Container.
+    pub container: ContainerKind,
     /// Requested variant.
     pub variant: VariantKind,
     /// Outcome status.
@@ -43,7 +47,7 @@ pub struct GenerateReport {
     pub topology_nodes: usize,
     /// Edge count in the topology.
     pub topology_edges: usize,
-    /// Output path when written to disk (optional).
+    /// Output path when written to disk (optional, CLI only).
     pub output_path: Option<String>,
     /// Archive byte length when bytes exist.
     pub archive_bytes: Option<u64>,
@@ -68,7 +72,8 @@ impl GenerateReport {
         edges: usize,
     ) -> Self {
         Self {
-            schema: REPORT_SCHEMA.to_string(),
+            schema: REPORT_SCHEMA_V1.to_string(),
+            container: ContainerKind::Zip,
             variant,
             status: ReportStatus::NotImplemented,
             topology_nodes: nodes,
