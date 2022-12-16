@@ -1,0 +1,22 @@
+{
+    "name": "@sxo/homepage",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "description": "zip-bomber marketing homepage (VMZ static site with @sxo/zip-bomber probe)",
+    "scripts": {
+        "check": "node ../../../scripts/ensure-vmz-host-manifest.mjs && vmz check .",
+        "build": "node ../../../scripts/ensure-vmz-host-manifest.mjs && vmz build --release --profile static .",
+        "dev": "node ../../../scripts/ensure-vmz-host-manifest.mjs && vmz dev .",
+        "preview": "vmz serve --profile static .",
+        "test:zip-bomber": "pnpm --filter @sxo/zip-bomber test:e2e"
+    },
+    "dependencies": {
+        "@sxo/zip-bomber": "workspace:*",
+        "@vmz/core": "0.2.7",
+        "@vmz/ui": "0.2.7"
+    },
+    "devDependencies": {
+        "@vmz/vmz": "0.2.7"
+    }
+}

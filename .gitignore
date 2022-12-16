@@ -1,0 +1,32 @@
+# OS
+.DS_Store/
+*.nb
+time-travel.sh
+
+# IDE
+.vscode/
+.vs/
+.idea/
+*.iml
+*.log
+*.txt
+
+# Rust
+target/
+Cargo.lock
+.cargo/config.toml
+
+# Node
+node_modules/
+dist/
+.placeholder-npm-cache.json
+scripts/.placeholder-npm-cache.json
+.cache/npm-placeholder.json
+.env.placeholder.local
+projects/packages/panduck-unknown-wasm32/lib/
+projects/packages/homepage/dist/
+projects/packages/homepage/public/
+projects/crates/zb-napi/index.d.ts
+projects/crates/zb-napi/index.js
+*.wasm
+*.node
