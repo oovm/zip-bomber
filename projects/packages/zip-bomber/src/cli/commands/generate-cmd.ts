@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { loadZipBomberNode } from "../../node/load.js";
-import { VARIANTS, type VariantId } from "../../types.js";
+import { zipBomb, zipFractal, zipLoopy, zipQuine } from "../../shared/facade.js";
+import { VARIANTS, type VariantId } from "../../shared/types.js";
 
 function parseArgs(argv: string[]): { variant?: string; output?: string } {
     let variant: string | undefined;
@@ -14,6 +15,19 @@ function parseArgs(argv: string[]): { variant?: string; output?: string } {
         }
     }
     return { variant, output };
+}
+
+async function runShared(variant: VariantId) {
+    switch (variant) {
+        case "bomb":
+            return zipBomb();
+        case "quine":
+            return zipQuine();
+        case "loopy":
+            return zipLoopy();
+        case "fractal":
+            return zipFractal();
+    }
 }
 
 /** Generate a variant archive (stub until native algorithms land). */
@@ -32,27 +46,24 @@ export async function runGenerate(argv: string[]): Promise<void> {
     }
 
     const node = loadZipBomberNode();
-    if (!node.generateVariant) {
-        const report = {
-            schema: "zb.report/v1",
-            variant,
-            status: "not_implemented",
-            warnings: [
-                "native zip-bomber binding is not built; run build:napi or wait for algorithm gates",
-            ],
-            error_code: "ZB_NOT_IMPLEMENTED",
-            error_message: `variant \`${variant}\` is recognized but not implemented`,
-        };
-        console.log(JSON.stringify(report, null, 2));
-        process.exitCode = 2;
+    if (node.generateVariant) {
+        const result = node.generateVariant(variant);
+        console.log(result.reportJson);
+        if (result.bytes && result.bytes.length > 0) {
+            writeFileSync(output, result.bytes);
+            console.error(`wrote ${output} (${result.bytes.length} bytes)`);
+        }
+        process.exitCode = result.exitCode;
         return;
     }
 
-    const result = node.generateVariant(variant);
-    console.log(result.reportJson);
-    if (result.bytes && result.bytes.length > 0) {
-        writeFileSync(output, result.bytes);
-        console.error(`wrote ${output} (${result.bytes.length} bytes)`);
+    const outcome = await runShared(variant as VariantId);
+    console.log(JSON.stringify(outcome, null, 2));
+    if (outcome.ok && outcome.value.artifacts[0]?.bytes.length) {
+        writeFileSync(output, outcome.value.artifacts[0].bytes);
+        console.error(`wrote ${output}`);
+        process.exitCode = 0;
+        return;
     }
-    process.exitCode = result.exitCode;
+    process.exitCode = 2;
 }

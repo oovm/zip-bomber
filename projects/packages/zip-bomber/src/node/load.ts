@@ -1,12 +1,24 @@
 import { createRequire } from "node:module";
-import { VARIANTS, type VariantId } from "../types.js";
+import {
+    createSharedZipBomberApi,
+    zipBomb,
+    zipFractal,
+    zipLoopy,
+    zipQuine,
+} from "../shared/facade.js";
+import { VARIANTS, type VariantId, type ZipBomberApi } from "../shared/types.js";
 
 export type ZipBomberNodeApi = {
     listVariants: () => VariantId[];
+    createZipBomber: () => Promise<ZipBomberApi>;
     generateVariant?: (variant: string) => {
         exitCode: number;
+        ok: boolean;
         bytes?: Buffer;
         reportJson: string;
+        errorCategory?: string;
+        errorCode?: string;
+        errorMessage?: string;
     };
 };
 
@@ -26,13 +38,18 @@ export function loadZipBomberNode(): ZipBomberNodeApi {
                 listVariantsNapi?: () => string[];
                 generateVariant?: (variant: string) => {
                     exitCode: number;
+                    ok: boolean;
                     bytes?: Buffer;
                     reportJson: string;
+                    errorCategory?: string;
+                    errorCode?: string;
+                    errorMessage?: string;
                 };
             };
             return {
                 listVariants: () =>
                     (binding.listVariantsNapi?.() ?? [...VARIANTS]) as VariantId[],
+                createZipBomber: async () => createSharedZipBomberApi("node"),
                 generateVariant: binding.generateVariant
                     ? (variant) => binding.generateVariant!(variant)
                     : undefined,
@@ -43,5 +60,13 @@ export function loadZipBomberNode(): ZipBomberNodeApi {
     }
     return {
         listVariants: () => [...VARIANTS],
+        createZipBomber: async () => createSharedZipBomberApi("stub"),
     };
 }
+
+/** Isomorphic factory for Node. */
+export async function createZipBomber(): Promise<ZipBomberApi> {
+    return loadZipBomberNode().createZipBomber();
+}
+
+export { zipBomb, zipQuine, zipLoopy, zipFractal };
