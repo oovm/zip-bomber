@@ -13,6 +13,7 @@ use zb_types::{
     ZbResult, ALL_VARIANTS,
 };
 
+pub use layout::{archive_size, MemberLayout, LayoutPlan, resolve_profile};
 pub use variants::ArtifactBundle;
 
 /// List supported variant ids in stable order.
