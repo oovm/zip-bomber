@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ContainerKind, TopologyGraph, VariantKind};
+use crate::{
+    zip_layout, ContainerKind, GenerateLimits, TopologyGraph, VariantKind, ZIP_PROFILE_V0,
+};
 
 /// Request schema id.
 pub const REQUEST_SCHEMA_V2: &str = "zb.request/v2";
@@ -88,6 +90,10 @@ pub struct GenerateRequest {
     pub payloads: Vec<PayloadSpec>,
     /// Optional fractal grammar when `variant == Fractal`.
     pub fractal: Option<FractalSpec>,
+    /// Construction profile id (must match a known [`crate::ZipProfile`]).
+    pub profile: String,
+    /// Execution budgets.
+    pub limits: GenerateLimits,
     /// CRC resolution strategy.
     pub crc_strategy: CrcStrategy,
     /// Soft Extra Field / header budget in bytes.
@@ -116,8 +122,10 @@ impl GenerateRequest {
             topology,
             payloads: Vec::new(),
             fractal,
+            profile: ZIP_PROFILE_V0.to_string(),
+            limits: GenerateLimits::small_sample(),
             crc_strategy: CrcStrategy::default(),
-            extra_budget: 32_763,
+            extra_budget: zip_layout::EXTRA_BUDGET_DEFAULT,
         }
     }
 }

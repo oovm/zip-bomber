@@ -76,6 +76,8 @@ pub enum ErrorCode {
     UnknownVariant,
     /// Topology violates the variant contract.
     InvalidTopology,
+    /// Profile id is unknown or mismatched.
+    UnsupportedProfile,
     /// Algorithm path is not wired yet.
     NotImplemented,
     /// Internal invariant broke.
@@ -88,6 +90,7 @@ impl ErrorCode {
         match self {
             Self::UnknownVariant => "ZB_UNKNOWN_VARIANT",
             Self::InvalidTopology => "ZB_INVALID_TOPOLOGY",
+            Self::UnsupportedProfile => "ZB_UNSUPPORTED_PROFILE",
             Self::NotImplemented => "ZB_NOT_IMPLEMENTED",
             Self::Internal => "ZB_INTERNAL",
         }
@@ -98,6 +101,7 @@ impl ErrorCode {
         match self {
             Self::UnknownVariant => ErrorCategory::UnsupportedVariant,
             Self::InvalidTopology => ErrorCategory::InvalidRequest,
+            Self::UnsupportedProfile => ErrorCategory::UnsupportedProfile,
             Self::NotImplemented => ErrorCategory::NotImplemented,
             Self::Internal => ErrorCategory::InternalError,
         }

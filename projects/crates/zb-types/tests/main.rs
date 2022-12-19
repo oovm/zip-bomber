@@ -1,6 +1,6 @@
 use zb_types::{
-    ArchiveEdge, EdgeRole, GenerateRequest, NodeId, TopologyGraph, VariantKind, ALL_VARIANTS,
-    REQUEST_SCHEMA_V2,
+    zip_layout, ArchiveEdge, EdgeRole, GenerateLimits, GenerateRequest, NodeId, TopologyGraph,
+    VariantKind, ZipProfile, ALL_VARIANTS, REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
 };
 
 #[test]
@@ -40,4 +40,18 @@ fn archive_edge_carries_member_path() {
         alignment: Default::default(),
     };
     assert_eq!(graph.edges[0].member_path, "nested/b.zip");
+}
+
+#[test]
+fn zip_profile_v0_and_limits_defaults() {
+    let profile = ZipProfile::v0_stub();
+    assert_eq!(profile.id, ZIP_PROFILE_V0);
+    assert!(!profile.allow_encryption);
+    assert_eq!(zip_layout::LFH_FIXED, 30);
+    assert_eq!(zip_layout::CD_ENTRY_FIXED, 46);
+    let limits = GenerateLimits::small_sample();
+    assert_eq!(limits.max_nodes, 64);
+    let req = GenerateRequest::bare(VariantKind::Bomb);
+    assert_eq!(req.profile, ZIP_PROFILE_V0);
+    assert_eq!(req.limits.max_edges, 256);
 }

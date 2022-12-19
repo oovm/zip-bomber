@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ContainerKind, VariantKind};
+use crate::{ContainerKind, VariantKind, ZIP_PROFILE_V0};
 
 /// Coarse topology class for capability registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ pub struct CapabilitySet {
 impl CapabilitySet {
     /// Template snapshot: all ZIP variants declared, none implemented.
     pub fn template_declared() -> Self {
-        let profile = "zip.profile/v0-stub".to_string();
+        let profile = ZIP_PROFILE_V0.to_string();
         let rows = [
             (VariantKind::Bomb, TopologyClass::NestedTree),
             (VariantKind::Quine, TopologyClass::SelfLoop),
