@@ -1,6 +1,6 @@
-//! DEFLATE block and chained-repeat planning (stub).
+//! DEFLATE block planning and fixed stored/fixed-Huffman skeleton helpers.
 
-use zb_types::GenerateRequest;
+use zb_types::{zip_layout, ErrorCode, GenerateRequest, ZbError, ZbResult};
 
 /// Placeholder deflate plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,4 +14,127 @@ pub fn plan(_request: &GenerateRequest) -> DeflatePlan {
     DeflatePlan {
         chained_repeats: true,
     }
+}
+
+/// One fixed skeleton instruction (Living `05` §4 initial subset).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkeletonOp {
+    /// Stored-block literal byte (constant).
+    StoredLiteral(u8),
+    /// Fixed-Huffman literal (constant), not used as a solver variable carrier.
+    FixedLiteral(u8),
+    /// LZ77 repeat with validated length / distance.
+    Repeat {
+        /// Match length in `3..=258`.
+        length: u16,
+        /// Back-reference distance in `1..=32768`.
+        distance: u16,
+    },
+    /// End-of-block marker.
+    EndOfBlock,
+}
+
+/// Validate a repeat token against RFC 1951 windows and already-emitted bytes.
+pub fn validate_repeat(length: u16, distance: u16, emitted: usize) -> ZbResult<()> {
+    if !(zip_layout::DEFLATE_LEN_MIN as u16..=zip_layout::DEFLATE_LEN_MAX as u16).contains(&length)
+    {
+        return Err(ZbError::new(
+            ErrorCode::Internal,
+            format!("DEFLATE length {length} out of 3..=258"),
+        ));
+    }
+    if distance == 0 || u32::from(distance) > zip_layout::DEFLATE_DIST_MAX {
+        return Err(ZbError::new(
+            ErrorCode::Internal,
+            format!("DEFLATE distance {distance} out of 1..=32768"),
+        ));
+    }
+    if usize::from(distance) > emitted {
+        return Err(ZbError::new(
+            ErrorCode::Internal,
+            format!("DEFLATE distance {distance} exceeds emitted {emitted}"),
+        ));
+    }
+    Ok(())
+}
+
+/// Symbolically expand a fixed skeleton into concrete output bytes.
+///
+/// Only constant literals and validated repeats are accepted. Variable slots for
+/// the GF(2) solver will be layered on later without changing opcode positions.
+pub fn expand_skeleton(ops: &[SkeletonOp]) -> ZbResult<Vec<u8>> {
+    let mut out = Vec::new();
+    for op in ops {
+        match *op {
+            SkeletonOp::StoredLiteral(b) | SkeletonOp::FixedLiteral(b) => out.push(b),
+            SkeletonOp::Repeat { length, distance } => {
+                validate_repeat(length, distance, out.len())?;
+                for _ in 0..length {
+                    let src = out.len() - usize::from(distance);
+                    let byte = out[src];
+                    out.push(byte);
+                }
+            }
+            SkeletonOp::EndOfBlock => {}
+        }
+    }
+    Ok(out)
+}
+
+/// Split a long copy into legal chained repeats (each length ≤ 258).
+pub fn chain_repeats(total_length: u32, distance: u16) -> ZbResult<Vec<SkeletonOp>> {
+    if total_length == 0 {
+        return Ok(Vec::new());
+    }
+    if total_length < zip_layout::DEFLATE_LEN_MIN {
+        return Err(ZbError::new(
+            ErrorCode::Internal,
+            "chained repeat total length must be at least 3 (or handled as literals)",
+        ));
+    }
+    let mut remaining = total_length;
+    let mut ops = Vec::new();
+    while remaining > 0 {
+        let chunk = remaining.min(zip_layout::DEFLATE_LEN_MAX);
+        if chunk < zip_layout::DEFLATE_LEN_MIN && remaining == chunk {
+            return Err(ZbError::new(
+                ErrorCode::Internal,
+                "cannot encode remainder 1..=2 without adjusting prior segments",
+            ));
+        }
+        let len = if chunk < zip_layout::DEFLATE_LEN_MIN {
+            // Leave a legal prior chunk; caller must rebalance.
+            return Err(ZbError::new(
+                ErrorCode::Internal,
+                "remainder 1..=2 requires prior segment adjustment",
+            ));
+        } else {
+            chunk
+        };
+        ops.push(SkeletonOp::Repeat {
+            length: len as u16,
+            distance,
+        });
+        remaining -= len;
+    }
+    Ok(ops)
+}
+
+/// Encode a single stored block payload with LEN / NLEN (byte-aligned header).
+pub fn encode_stored_block(payload: &[u8], final_block: bool) -> ZbResult<Vec<u8>> {
+    if payload.len() > 65535 {
+        return Err(ZbError::new(
+            ErrorCode::Internal,
+            "stored block payload exceeds 65535 bytes",
+        ));
+    }
+    let len = payload.len() as u16;
+    let nlen = !len;
+    let mut out = Vec::with_capacity(5 + payload.len());
+    // Bit-level header is deferred; emit LEN/NLEN + payload for oracle tests.
+    let _bfinal = final_block;
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(&nlen.to_le_bytes());
+    out.extend_from_slice(payload);
+    Ok(out)
 }

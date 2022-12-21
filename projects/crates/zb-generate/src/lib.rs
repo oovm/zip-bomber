@@ -4,17 +4,24 @@
 
 mod crc;
 mod deflate;
+mod gf2;
 mod layout;
 mod validate;
 mod variants;
+mod verify;
 
 use zb_types::{
     ArtifactSet, CapabilitySet, GenerateReport, GenerateRequest, Outcome, VariantKind, ZbError,
     ZbResult, ALL_VARIANTS,
 };
 
-pub use layout::{archive_size, MemberLayout, LayoutPlan, resolve_profile};
+pub use deflate::{
+    chain_repeats, encode_stored_block, expand_skeleton, validate_repeat, DeflatePlan, SkeletonOp,
+};
+pub use gf2::{solve, solve_rows, BitMatrix, Gf2Solution};
+pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
 pub use variants::ArtifactBundle;
+pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
 
 /// List supported variant ids in stable order.
 pub fn list_variants() -> &'static [VariantKind] {
@@ -89,4 +96,9 @@ pub fn report_json(report: &GenerateReport) -> ZbResult<String> {
             format!("failed to serialize report: {err}"),
         )
     })
+}
+
+/// Independent ZIP verification entry (returns capability gap until Acorn is wired).
+pub fn verify(set: &ArtifactSet) -> ZbResult<VerificationReport> {
+    verify_artifact_set(set)
 }
