@@ -105,9 +105,7 @@ impl GenerateRequest {
     pub fn bare(variant: VariantKind) -> Self {
         let topology = match variant {
             VariantKind::Quine => TopologyGraph::quine_self("a.zip", "a/a.zip"),
-            VariantKind::Loopy => {
-                TopologyGraph::loopy_pair("a.zip", "b.zip", "b.zip", "a.zip")
-            }
+            VariantKind::Loopy => TopologyGraph::loopy_pair("a.zip", "b.zip", "b.zip", "a.zip"),
             VariantKind::Bomb | VariantKind::Fractal => TopologyGraph::empty(),
         };
         let fractal = matches!(variant, VariantKind::Fractal).then(|| FractalSpec {

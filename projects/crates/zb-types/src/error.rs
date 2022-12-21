@@ -32,6 +32,8 @@ pub enum ErrorCategory {
     PeriodMismatch,
     /// Independent verification failed.
     VerificationFailed,
+    /// Acorn / decoder facts required by the profile are not available yet.
+    VerificationCapabilityMissing,
     /// Cooperative cancel.
     Cancelled,
     /// Internal invariant broke.
@@ -56,6 +58,7 @@ impl ErrorCategory {
             Self::ConstraintUnsatisfied => "constraint_unsatisfied",
             Self::PeriodMismatch => "period_mismatch",
             Self::VerificationFailed => "verification_failed",
+            Self::VerificationCapabilityMissing => "verification_capability_missing",
             Self::Cancelled => "cancelled",
             Self::InternalError => "internal_error",
             Self::NotImplemented => "not_implemented",
@@ -78,6 +81,8 @@ pub enum ErrorCode {
     InvalidTopology,
     /// Profile id is unknown or mismatched.
     UnsupportedProfile,
+    /// Verifier lacks required Acorn / decoder facts.
+    VerificationCapabilityMissing,
     /// Algorithm path is not wired yet.
     NotImplemented,
     /// Internal invariant broke.
@@ -91,6 +96,7 @@ impl ErrorCode {
             Self::UnknownVariant => "ZB_UNKNOWN_VARIANT",
             Self::InvalidTopology => "ZB_INVALID_TOPOLOGY",
             Self::UnsupportedProfile => "ZB_UNSUPPORTED_PROFILE",
+            Self::VerificationCapabilityMissing => "ZB_VERIFICATION_CAPABILITY_MISSING",
             Self::NotImplemented => "ZB_NOT_IMPLEMENTED",
             Self::Internal => "ZB_INTERNAL",
         }
@@ -102,6 +108,7 @@ impl ErrorCode {
             Self::UnknownVariant => ErrorCategory::UnsupportedVariant,
             Self::InvalidTopology => ErrorCategory::InvalidRequest,
             Self::UnsupportedProfile => ErrorCategory::UnsupportedProfile,
+            Self::VerificationCapabilityMissing => ErrorCategory::VerificationCapabilityMissing,
             Self::NotImplemented => ErrorCategory::NotImplemented,
             Self::Internal => ErrorCategory::InternalError,
         }
@@ -138,6 +145,11 @@ impl ZbError {
     /// Not-implemented helper.
     pub fn not_implemented(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::NotImplemented, message)
+    }
+
+    /// Missing verifier capability helper (Living `06`).
+    pub fn verification_capability_missing(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::VerificationCapabilityMissing, message)
     }
 }
 
