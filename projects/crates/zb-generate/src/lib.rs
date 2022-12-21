@@ -15,6 +15,9 @@ use zb_types::{
     ZbResult, ALL_VARIANTS,
 };
 
+pub use crc::{
+    crc32, crc32_affine_columns, u32_to_bits, CrcPlan, CRC32_CHECK, CRC32_POLY,
+};
 pub use deflate::{
     chain_repeats, encode_stored_block, expand_skeleton, validate_repeat, DeflatePlan, SkeletonOp,
 };
