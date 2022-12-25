@@ -93,7 +93,9 @@ pub fn generate_variant(variant: String) -> Result<GenerateResponse> {
             };
             let bytes = value
                 .artifacts
-                .first()
+                .iter()
+                .find(|a| a.id == value.root)
+                .or_else(|| value.artifacts.last())
                 .filter(|a| !a.bytes.is_empty())
                 .map(|a| Buffer::from(a.bytes.clone()));
             Ok(GenerateResponse {

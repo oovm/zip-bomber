@@ -1,6 +1,11 @@
 import { writeFileSync } from "node:fs";
-import { loadZipBomberNode } from "../../node/load.js";
-import { zipBomb, zipFractal, zipLoopy, zipQuine } from "../../shared/facade.js";
+import {
+    loadZipBomberNode,
+    zipBomb,
+    zipFractal,
+    zipLoopy,
+    zipQuine,
+} from "../../node/load.js";
 import { VARIANTS, type VariantId } from "../../shared/types.js";
 
 function parseArgs(argv: string[]): { variant?: string; output?: string } {

@@ -1,2 +1,8 @@
-export { createZipBomber, loadZipBomberNode } from "./load.js";
-export { zipBomb, zipFractal, zipLoopy, zipQuine } from "../shared/facade.js";
+export {
+    createZipBomber,
+    loadZipBomberNode,
+    zipBomb,
+    zipFractal,
+    zipLoopy,
+    zipQuine,
+} from "./load.js";
