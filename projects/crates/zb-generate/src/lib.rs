@@ -4,6 +4,7 @@
 
 mod crc;
 mod deflate;
+mod emit;
 mod gf2;
 mod layout;
 mod validate;
@@ -21,6 +22,7 @@ pub use crc::{
 pub use deflate::{
     chain_repeats, encode_stored_block, expand_skeleton, validate_repeat, DeflatePlan, SkeletonOp,
 };
+pub use emit::{emit_stored_archive, StoredMember};
 pub use gf2::{solve, solve_rows, BitMatrix, Gf2Solution};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
 pub use variants::ArtifactBundle;
@@ -31,7 +33,7 @@ pub fn list_variants() -> &'static [VariantKind] {
     &ALL_VARIANTS
 }
 
-/// Capability snapshot (all ZIP variants declared, none implemented).
+/// Capability snapshot (`Bomb` nested tree is `implemented`, others declared).
 pub fn capabilities() -> CapabilitySet {
     CapabilitySet::template_declared()
 }
@@ -80,12 +82,22 @@ pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
                     ),
                     bundle.report,
                 )
+            } else if bundle.report.status == zb_types::ReportStatus::Error {
+                let err = ZbError::new(
+                    zb_types::ErrorCode::Internal,
+                    bundle
+                        .report
+                        .error_message
+                        .clone()
+                        .unwrap_or_else(|| "generate failed".to_string()),
+                );
+                Outcome::err(err, bundle.report)
             } else {
                 Outcome::ok(bundle.artifacts, bundle.report)
             }
         }
         Err(err) => {
-            let report = GenerateReport::not_implemented(variant, crc, nodes, edges);
+            let report = GenerateReport::failed(variant, crc, nodes, edges, &err);
             Outcome::err(err, report)
         }
     }

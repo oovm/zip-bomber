@@ -83,6 +83,8 @@ pub enum ErrorCode {
     UnsupportedProfile,
     /// Verifier lacks required Acorn / decoder facts.
     VerificationCapabilityMissing,
+    /// Request exceeds declared generate limits.
+    ResourceLimited,
     /// Algorithm path is not wired yet.
     NotImplemented,
     /// Internal invariant broke.
@@ -97,6 +99,7 @@ impl ErrorCode {
             Self::InvalidTopology => "ZB_INVALID_TOPOLOGY",
             Self::UnsupportedProfile => "ZB_UNSUPPORTED_PROFILE",
             Self::VerificationCapabilityMissing => "ZB_VERIFICATION_CAPABILITY_MISSING",
+            Self::ResourceLimited => "ZB_RESOURCE_LIMITED",
             Self::NotImplemented => "ZB_NOT_IMPLEMENTED",
             Self::Internal => "ZB_INTERNAL",
         }
@@ -109,6 +112,7 @@ impl ErrorCode {
             Self::InvalidTopology => ErrorCategory::InvalidRequest,
             Self::UnsupportedProfile => ErrorCategory::UnsupportedProfile,
             Self::VerificationCapabilityMissing => ErrorCategory::VerificationCapabilityMissing,
+            Self::ResourceLimited => ErrorCategory::ResourceLimited,
             Self::NotImplemented => ErrorCategory::NotImplemented,
             Self::Internal => ErrorCategory::InternalError,
         }
@@ -150,6 +154,11 @@ impl ZbError {
     /// Missing verifier capability helper (Living `06`).
     pub fn verification_capability_missing(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::VerificationCapabilityMissing, message)
+    }
+
+    /// Budget / resource limit helper.
+    pub fn resource_limited(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::ResourceLimited, message)
     }
 }
 

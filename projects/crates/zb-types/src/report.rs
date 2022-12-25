@@ -91,4 +91,56 @@ impl GenerateReport {
             )),
         }
     }
+
+    /// Successful emit report.
+    pub fn ok(
+        variant: VariantKind,
+        crc: CrcStrategy,
+        nodes: usize,
+        edges: usize,
+        archive_bytes: u64,
+        declared_uncompressed: u64,
+        warnings: Vec<String>,
+    ) -> Self {
+        Self {
+            schema: REPORT_SCHEMA_V1.to_string(),
+            container: ContainerKind::Zip,
+            variant,
+            status: ReportStatus::Ok,
+            topology_nodes: nodes,
+            topology_edges: edges,
+            output_path: None,
+            archive_bytes: Some(archive_bytes),
+            declared_uncompressed: Some(declared_uncompressed),
+            crc_strategy: crc.as_str().to_string(),
+            warnings,
+            error_code: None,
+            error_message: None,
+        }
+    }
+
+    /// Failed emit report carrying the structured error.
+    pub fn failed(
+        variant: VariantKind,
+        crc: CrcStrategy,
+        nodes: usize,
+        edges: usize,
+        err: &crate::ZbError,
+    ) -> Self {
+        Self {
+            schema: REPORT_SCHEMA_V1.to_string(),
+            container: ContainerKind::Zip,
+            variant,
+            status: ReportStatus::Error,
+            topology_nodes: nodes,
+            topology_edges: edges,
+            output_path: None,
+            archive_bytes: None,
+            declared_uncompressed: None,
+            crc_strategy: crc.as_str().to_string(),
+            warnings: Vec::new(),
+            error_code: Some(err.code.as_str().to_string()),
+            error_message: Some(err.message.clone()),
+        }
+    }
 }
