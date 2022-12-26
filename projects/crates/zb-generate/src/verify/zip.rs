@@ -21,16 +21,25 @@ pub struct AcornZipCapability {
 }
 
 impl AcornZipCapability {
-    /// Current known gap relative to Living `06` §3 (no Acorn wire yet).
-    pub fn current_gap() -> Self {
+    /// Observed public Acorn ZIP surface (not yet wired as a zb dependency).
+    ///
+    /// `index_zip` and `member_crc_facts` reflect the published `acorn-zip`
+    /// indexer once CRC / flags / version land on `ZipMember`. Decode still
+    /// lacks fully-consumed + CRC pair evidence required by Living `06` §3.
+    pub fn observed() -> Self {
         Self {
-            index_zip: false,
-            member_crc_facts: false,
+            index_zip: true,
+            member_crc_facts: true,
             bounded_decode_complete: false,
             decode_crc_pair: false,
-            parse_budget: false,
+            parse_budget: true,
             format_status_query: false,
         }
+    }
+
+    /// Alias kept for older call sites.
+    pub fn current_gap() -> Self {
+        Self::observed()
     }
 
     /// Whether the adapter is sufficient for the v0 ZIP profile verification gate.
@@ -82,11 +91,11 @@ pub struct VerificationReport {
 
 /// Verify emitted ZIP bytes through an independent parser path.
 ///
-/// Until Acorn exposes CRC / complete-decode facts, this returns
+/// Until Acorn exposes complete-decode CRC facts, this returns
 /// [`verification_capability_missing`](ZbError::verification_capability_missing)
 /// instead of treating index success as proof.
 pub fn verify_zip_bytes(_bytes: &[u8]) -> ZbResult<VerificationReport> {
-    let acorn = AcornZipCapability::current_gap();
+    let acorn = AcornZipCapability::observed();
     if !acorn.supports_v0_full_verify() {
         let missing: Vec<String> = acorn.missing().into_iter().map(str::to_string).collect();
         return Err(ZbError::verification_capability_missing(format!(
