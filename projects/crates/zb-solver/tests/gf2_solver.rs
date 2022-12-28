@@ -1,4 +1,4 @@
-use zb_generate::solve_rows;
+use zb_solver::solve_rows;
 use zb_types::ErrorCategory;
 
 #[test]

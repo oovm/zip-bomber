@@ -1,6 +1,4 @@
-use zb_generate::{
-    crc32, crc32_affine_columns, solve_rows, u32_to_bits, CRC32_CHECK,
-};
+use zb_solver::{crc32, crc32_affine_columns, solve_rows, u32_to_bits, CRC32_CHECK};
 
 #[test]
 fn ieee_crc32_check_vector() {
@@ -9,7 +7,6 @@ fn ieee_crc32_check_vector() {
 
 #[test]
 fn affine_recovers_single_unknown_byte() {
-    // CRC("12X456789") with X unknown, target = CRC("123456789").
     let template = [
         Some(b'1'),
         Some(b'2'),
@@ -44,7 +41,6 @@ fn affine_recovers_single_unknown_byte() {
 
 #[test]
 fn crc_is_affine_not_linear() {
-    // Counterexample to CRC(a XOR b) == CRC(a) XOR CRC(b).
     let a = b"aaaaaaaa";
     let b = b"bbbbbbbb";
     let mut axorb = [0u8; 8];

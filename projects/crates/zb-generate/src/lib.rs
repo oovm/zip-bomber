@@ -5,7 +5,6 @@
 mod crc;
 mod deflate;
 mod emit;
-mod gf2;
 mod layout;
 mod validate;
 mod variants;
@@ -16,15 +15,17 @@ use zb_types::{
     ZbResult, ALL_VARIANTS,
 };
 
-pub use crc::{
-    crc32, crc32_affine_columns, u32_to_bits, CrcPlan, CRC32_CHECK, CRC32_POLY,
-};
+pub use crc::CrcPlan;
 pub use deflate::{
     chain_repeats, encode_stored_block, expand_skeleton, validate_repeat, DeflatePlan, SkeletonOp,
 };
 pub use emit::{emit_stored_archive, StoredMember};
-pub use gf2::{solve, solve_rows, BitMatrix, Gf2Solution};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
+/// Re-export solver surface so generate callers share one dependency path.
+pub use zb_solver::{
+    crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix,
+    EquationId, Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK, CRC32_POLY,
+};
 pub use variants::ArtifactBundle;
 pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
 
