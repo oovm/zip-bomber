@@ -18,6 +18,9 @@ doctest = false
 zb-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+acorn-zip = { workspace = true }
+acorn-core = { workspace = true }
+acorn-source = { workspace = true }
 
 [features]
 default = []

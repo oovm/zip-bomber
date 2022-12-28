@@ -85,6 +85,8 @@ pub enum ErrorCode {
     VerificationCapabilityMissing,
     /// Request exceeds declared generate limits.
     ResourceLimited,
+    /// Independent verification failed.
+    VerificationFailed,
     /// Algorithm path is not wired yet.
     NotImplemented,
     /// Internal invariant broke.
@@ -100,6 +102,7 @@ impl ErrorCode {
             Self::UnsupportedProfile => "ZB_UNSUPPORTED_PROFILE",
             Self::VerificationCapabilityMissing => "ZB_VERIFICATION_CAPABILITY_MISSING",
             Self::ResourceLimited => "ZB_RESOURCE_LIMITED",
+            Self::VerificationFailed => "ZB_VERIFICATION_FAILED",
             Self::NotImplemented => "ZB_NOT_IMPLEMENTED",
             Self::Internal => "ZB_INTERNAL",
         }
@@ -113,6 +116,7 @@ impl ErrorCode {
             Self::UnsupportedProfile => ErrorCategory::UnsupportedProfile,
             Self::VerificationCapabilityMissing => ErrorCategory::VerificationCapabilityMissing,
             Self::ResourceLimited => ErrorCategory::ResourceLimited,
+            Self::VerificationFailed => ErrorCategory::VerificationFailed,
             Self::NotImplemented => ErrorCategory::NotImplemented,
             Self::Internal => ErrorCategory::InternalError,
         }
@@ -159,6 +163,11 @@ impl ZbError {
     /// Budget / resource limit helper.
     pub fn resource_limited(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::ResourceLimited, message)
+    }
+
+    /// Independent verification failure helper.
+    pub fn verification_failed(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::VerificationFailed, message)
     }
 }
 
