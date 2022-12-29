@@ -1,0 +1,6 @@
+{
+    "zb.diagnostic.native_generate_available": "native generate available",
+    "zb.diagnostic.native_generate_stub": "native generate stub (TS-only)",
+    "zb.diagnostic.unknown_variant": "unknown variant",
+    "zb.diagnostic.missing_generate_args": "generate requires --variant and --output"
+}

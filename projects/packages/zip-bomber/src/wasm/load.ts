@@ -1,7 +1,7 @@
 import {
     createSharedZipBomberApi,
     type ZipBomberBackendHooks,
-} from "../shared/facade.js";
+} from "../facade.js";
 import {
     VARIANTS,
     type ArtifactSet,
@@ -9,7 +9,7 @@ import {
     type Outcome,
     type VariantId,
     type ZipBomberApi,
-} from "../shared/types.js";
+} from "../types.js";
 
 const ARTIFACT_PACKAGE = "@sxo/zip-bomber-unknown-wasm32";
 

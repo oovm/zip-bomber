@@ -1,0 +1,12 @@
+{
+    "zb.cli.intro": "zb — recursive ZIP / zip-bomb variant generator",
+    "zb.cli.cmd.doctor": "Probe backends, capabilities, and catalog coverage",
+    "zb.cli.cmd.variants": "List declared ZIP variants",
+    "zb.cli.cmd.generate": "Generate a variant archive",
+    "zb.cli.cmd.plan": "Plan feasibility without emitting bytes",
+    "zb.cli.cmd.verify": "Independently verify an emitted artifact set",
+    "zb.cli.opt.json": "Emit machine-readable JSON on stdout",
+    "zb.cli.opt.variant": "Variant id: bomb, quine, loopy, or fractal",
+    "zb.cli.opt.output": "Output archive path",
+    "zb.cli.opt.locale": "CLI locale (BCP-47)"
+}

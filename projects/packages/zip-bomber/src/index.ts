@@ -13,12 +13,16 @@ export type {
     VariantId,
     ZipBomberApi,
     ZbError,
-} from "./shared/types.js";
-export { VARIANTS } from "./shared/types.js";
+} from "./types.js";
+export { VARIANTS } from "./types.js";
 export {
     createSharedZipBomberApi,
     zipBomb,
     zipFractal,
     zipLoopy,
     zipQuine,
-} from "./shared/facade.js";
+} from "./facade.js";
+export type { BackendGenerateResult, ZipBomberBackendHooks } from "./facade.js";
+export type { ZipBomberApiFactory, ZipBomberBackend } from "./api.js";
+export { notImplementedError, runtimeDisposedError } from "./errors.js";
+export { toUint8Array } from "./wire.js";
