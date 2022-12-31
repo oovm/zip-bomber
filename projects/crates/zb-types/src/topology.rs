@@ -112,6 +112,27 @@ impl TopologyGraph {
         }
     }
 
+    /// Two-level nested bomb DAG: `root -- child_path --> child` (leaf auto-payload).
+    pub fn bomb_nest(
+        root: impl Into<String>,
+        child: impl Into<String>,
+        child_path: impl Into<String>,
+    ) -> Self {
+        let root = NodeId::new(root);
+        let child = NodeId::new(child);
+        Self {
+            nodes: vec![root.clone(), child.clone()],
+            edges: vec![ArchiveEdge {
+                id: None,
+                from: root,
+                member_path: child_path.into(),
+                to: child,
+                role: EdgeRole::NestedArchive,
+            }],
+            alignment: AlignmentPolicy::default(),
+        }
+    }
+
     /// Two-node cycle suitable for a loopy stub.
     pub fn loopy_pair(
         a: impl Into<String>,
