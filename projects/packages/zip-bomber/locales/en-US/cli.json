@@ -8,5 +8,6 @@
     "zb.cli.opt.json": "Emit machine-readable JSON on stdout",
     "zb.cli.opt.variant": "Variant id: bomb, quine, loopy, or fractal",
     "zb.cli.opt.output": "Output archive path",
+    "zb.cli.opt.input": "Input archive path to verify",
     "zb.cli.opt.locale": "CLI locale (BCP-47)"
 }

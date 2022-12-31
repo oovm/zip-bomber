@@ -10,6 +10,7 @@ mod validate;
 mod variants;
 mod verify;
 
+use serde::{Deserialize, Serialize};
 use zb_types::{
     ArtifactSet, CapabilitySet, GenerateReport, GenerateRequest, Outcome, VariantKind, ZbError,
     ZbResult, ALL_VARIANTS,
@@ -21,6 +22,7 @@ pub use deflate::{
 };
 pub use emit::{emit_stored_archive, StoredMember};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
+// `PlanSummary` / `plan_generate` are defined below (pipeline plan, not layout::plan).
 /// Re-export solver surface so generate callers share one dependency path.
 pub use zb_solver::{
     crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix,
@@ -37,6 +39,79 @@ pub fn list_variants() -> &'static [VariantKind] {
 /// Capability snapshot (`Bomb` nested tree is `implemented`, others declared).
 pub fn capabilities() -> CapabilitySet {
     CapabilitySet::template_declared()
+}
+
+/// Feasibility plan (no archive bytes). Living `04` `plan` surface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanSummary {
+    /// Whether generation is expected to succeed for this request/profile.
+    pub feasible: bool,
+    /// Requested variant id.
+    pub variant: String,
+    /// Resolved profile id.
+    pub profile: String,
+    /// Short human summary (stable English tokens for machines prefer `feasible`).
+    pub summary: String,
+    /// Non-fatal notes.
+    pub warnings: Vec<String>,
+}
+
+/// Plan generation without emitting bytes.
+pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
+    let variant = request.variant;
+    let crc = request.crc_strategy;
+    let nodes = request.topology.nodes.len();
+    let edges = request.topology.edges.len();
+
+    if let Err(err) = validate::normalize(&request) {
+        let report = GenerateReport::failed(variant, crc, nodes, edges, &err);
+        return Outcome::err(err, report);
+    }
+    let layout = match layout::plan(&request) {
+        Ok(plan) => plan,
+        Err(err) => {
+            let report = GenerateReport::failed(variant, crc, nodes, edges, &err);
+            return Outcome::err(err, report);
+        }
+    };
+
+    match variant {
+        VariantKind::Bomb => {
+            let empty = request.topology.nodes.is_empty() && request.topology.edges.is_empty();
+            let summary = if empty {
+                format!(
+                    "bomb feasible under `{}` via default depth nesting (empty topology)",
+                    layout.profile_id
+                )
+            } else {
+                format!(
+                    "bomb feasible under `{}` via topology DAG (nodes={nodes} edges={edges})",
+                    layout.profile_id
+                )
+            };
+            let plan = PlanSummary {
+                feasible: true,
+                variant: variant.as_str().to_string(),
+                profile: layout.profile_id,
+                summary,
+                warnings: Vec::new(),
+            };
+            let report = GenerateReport::ok(variant, crc, nodes, edges, 0, 0, Vec::new());
+            Outcome::ok(plan, report)
+        }
+        VariantKind::Quine | VariantKind::Loopy | VariantKind::Fractal => {
+            let err = ZbError::not_implemented(format!(
+                "plan for variant `{}` is not implemented yet",
+                variant.as_str()
+            ));
+            let mut report = GenerateReport::not_implemented(variant, crc, nodes, edges);
+            report.warnings.push(format!(
+                "profile `{}` resolved but variant driver is not planned",
+                layout.profile_id
+            ));
+            Outcome::err(err, report)
+        }
+    }
 }
 
 /// Generate an archive artifact for the request.

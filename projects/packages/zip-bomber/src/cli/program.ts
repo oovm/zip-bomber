@@ -10,7 +10,9 @@ import {
 
 import { registerDoctorCommand } from "./commands/doctor-cmd.js";
 import { registerGenerateCommand } from "./commands/generate-cmd.js";
+import { registerPlanCommand } from "./commands/plan-cmd.js";
 import { registerVariantsCommand } from "./commands/variants-cmd.js";
+import { registerVerifyCommand } from "./commands/verify-cmd.js";
 
 /** Locales root shipped with the main package. */
 export function localesRoot(): string {
@@ -28,7 +30,9 @@ export function buildZbCli(): Cli {
 
     registerDoctorCommand(cli);
     registerVariantsCommand(cli);
+    registerPlanCommand(cli);
     registerGenerateCommand(cli);
+    registerVerifyCommand(cli);
 
     assertCatalogCoverage(cli, loadCatalog("en-US", root));
     assertCatalogCoverage(cli, loadCatalog("zh-CN", root));
