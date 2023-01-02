@@ -19,7 +19,8 @@ use zb_types::{
 
 pub use crc::CrcPlan;
 pub use deflate::{
-    chain_repeats, encode_stored_block, expand_skeleton, validate_repeat, DeflatePlan, SkeletonOp,
+    chain_repeats, encode_blocks, encode_fixed_stream, encode_stored_block, encode_stored_stream,
+    expand_skeleton, validate_repeat, BitWriter, DeflateBlock, DeflatePlan, FixedOp, SkeletonOp,
 };
 pub use emit::{emit_stored_archive, StoredMember};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
