@@ -21,6 +21,11 @@ impl BitWriter {
         self.buf.len() + if self.bit > 0 { 1 } else { 0 }
     }
 
+    /// Number of meaningful bits, excluding final byte padding.
+    pub(crate) fn bit_len(&self) -> usize {
+        self.buf.len() * 8 + usize::from(self.bit)
+    }
+
     /// Write `nbits` from the low end of `value` (LSB of `value` first).
     pub fn write_bits(&mut self, mut value: u32, mut nbits: u8) {
         while nbits > 0 {

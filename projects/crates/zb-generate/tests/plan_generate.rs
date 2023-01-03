@@ -27,12 +27,12 @@ fn plans_topology_bomb_as_feasible() {
 }
 
 #[test]
-fn plans_quine_as_search_exhausted_without_templates() {
+fn plans_quine_with_complete_template() {
     match plan_generate(GenerateRequest::bare(VariantKind::Quine)) {
-        Outcome::Err { error, report, .. } => {
-            assert_eq!(error.category.as_str(), "search_exhausted");
-            assert_eq!(report.variant, VariantKind::Quine);
+        Outcome::Ok { value, .. } => {
+            assert!(value.feasible);
+            assert!(value.summary.contains("prefix/core/suffix"));
         }
-        Outcome::Ok { .. } => panic!("quine plan should be search_exhausted"),
+        Outcome::Err { error, .. } => panic!("quine plan failed: {error}"),
     }
 }

@@ -7,8 +7,10 @@ use zb_types::{zip_layout, ErrorCode, GenerateRequest, ZbError, ZbResult};
 
 pub use bits::BitWriter;
 pub use encode::{
-    encode_blocks, encode_fixed_stream, encode_stored_stream, DeflateBlock, FixedOp,
+    encode_blocks, encode_blocks_with_finality, encode_fixed_stream, encode_stored_stream,
+    DeflateBlock, FixedOp,
 };
+pub(crate) use encode::{encode_fixed, encode_stored};
 
 /// Placeholder deflate plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,7 +105,10 @@ pub fn chain_repeats(total_length: u32, distance: u16) -> ZbResult<Vec<SkeletonO
     let mut remaining = total_length;
     let mut ops = Vec::new();
     while remaining > 0 {
-        let chunk = remaining.min(zip_layout::DEFLATE_LEN_MAX);
+        let mut chunk = remaining.min(zip_layout::DEFLATE_LEN_MAX);
+        if remaining > chunk && remaining - chunk < zip_layout::DEFLATE_LEN_MIN {
+            chunk -= zip_layout::DEFLATE_LEN_MIN - (remaining - chunk);
+        }
         if chunk < zip_layout::DEFLATE_LEN_MIN && remaining == chunk {
             return Err(ZbError::new(
                 ErrorCode::Internal,

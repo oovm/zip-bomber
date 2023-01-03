@@ -37,6 +37,29 @@ pub fn encode_blocks(blocks: &[DeflateBlock]) -> ZbResult<Vec<u8>> {
     Ok(w.finish())
 }
 
+/// Encode a skeleton with an explicit final flag for every block.
+///
+/// Recursive templates need this because a quoted fragment can contain a
+/// non-final block even when it is the last block in the fragment. The regular
+/// [`encode_blocks`] API deliberately keeps the safe ordinary-stream rule that
+/// only the last block is final.
+pub fn encode_blocks_with_finality(blocks: &[(DeflateBlock, bool)]) -> ZbResult<Vec<u8>> {
+    if blocks.is_empty() {
+        return Err(ZbError::new(
+            ErrorCode::Internal,
+            "DEFLATE stream requires at least one block",
+        ));
+    }
+    let mut w = BitWriter::new();
+    for (block, is_final) in blocks {
+        match block {
+            DeflateBlock::Stored(data) => encode_stored(&mut w, data, *is_final)?,
+            DeflateBlock::Fixed(ops) => encode_fixed(&mut w, ops, *is_final)?,
+        }
+    }
+    Ok(w.finish())
+}
+
 /// One DEFLATE block (finality is assigned by position in [`encode_blocks`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeflateBlock {
@@ -56,7 +79,7 @@ pub fn encode_fixed_stream(ops: &[FixedOp]) -> ZbResult<Vec<u8>> {
     encode_blocks(&[DeflateBlock::Fixed(ops.to_vec())])
 }
 
-fn encode_stored(w: &mut BitWriter, payload: &[u8], final_block: bool) -> ZbResult<()> {
+pub(crate) fn encode_stored(w: &mut BitWriter, payload: &[u8], final_block: bool) -> ZbResult<()> {
     if payload.len() > 65535 {
         return Err(ZbError::new(
             ErrorCode::Internal,
@@ -74,7 +97,7 @@ fn encode_stored(w: &mut BitWriter, payload: &[u8], final_block: bool) -> ZbResu
     Ok(())
 }
 
-fn encode_fixed(w: &mut BitWriter, ops: &[FixedOp], final_block: bool) -> ZbResult<()> {
+pub(crate) fn encode_fixed(w: &mut BitWriter, ops: &[FixedOp], final_block: bool) -> ZbResult<()> {
     w.write_bits(u32::from(final_block), 1);
     w.write_bits(0b01, 2);
     for op in ops {

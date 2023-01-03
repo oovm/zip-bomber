@@ -19,23 +19,24 @@ use zb_types::{
 
 pub use crc::CrcPlan;
 pub use deflate::{
-    chain_repeats, encode_blocks, encode_fixed_stream, encode_stored_block, encode_stored_stream,
-    expand_skeleton, validate_repeat, BitWriter, DeflateBlock, DeflatePlan, FixedOp, SkeletonOp,
+    chain_repeats, encode_blocks, encode_blocks_with_finality, encode_fixed_stream,
+    encode_stored_block, encode_stored_stream, expand_skeleton, validate_repeat, BitWriter,
+    DeflateBlock, DeflatePlan, FixedOp, SkeletonOp,
 };
 pub use emit::{emit_stored_archive, StoredMember};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
 // `PlanSummary` / `plan_generate` are defined below (pipeline plan, not layout::plan).
-/// Re-export solver surface so generate callers share one dependency path.
-pub use zb_solver::{
-    crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix,
-    EquationId, Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK, CRC32_POLY,
-};
 pub use templates::{
-    cox_core_program, interpret_lz_quine, is_self_reproducing, list_quine_templates, LzOp,
-    QuineTemplateMeta,
+    cox_core_program, encode_cox_core_deflate, interpret_lz_quine, is_self_reproducing,
+    list_quine_templates, LzOp, QuineTemplateMeta,
 };
 pub use variants::ArtifactBundle;
 pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
+/// Re-export solver surface so generate callers share one dependency path.
+pub use zb_solver::{
+    crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix, EquationId,
+    Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK, CRC32_POLY,
+};
 
 /// List supported variant ids in stable order.
 pub fn list_variants() -> &'static [VariantKind] {
@@ -107,15 +108,40 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
         }
         VariantKind::Quine => {
             let registered = templates::list_quine_templates(&layout.profile_id).len();
-            let err = ZbError::search_exhausted(format!(
-                "quine plan: {registered} verified templates for `{}`",
-                layout.profile_id
-            ));
-            let mut report = GenerateReport::failed(variant, crc, nodes, edges, &err);
-            report.warnings.push(
-                "quine requires a verified DEFLATE self-reference skeleton before emit".to_string(),
-            );
-            Outcome::err(err, report)
+            if registered == 0 {
+                let err = ZbError::search_exhausted(format!(
+                    "quine plan: no templates for `{}`",
+                    layout.profile_id
+                ));
+                return Outcome::err(
+                    err.clone(),
+                    GenerateReport::failed(variant, crc, nodes, edges, &err),
+                );
+            }
+            if !request.payloads.is_empty() {
+                let err = ZbError::not_implemented(
+                    "this quine template does not yet embed ordinary payload members",
+                );
+                return Outcome::err(
+                    err.clone(),
+                    GenerateReport::failed(variant, crc, nodes, edges, &err),
+                );
+            }
+            let plan = PlanSummary {
+                feasible: true,
+                variant: variant.as_str().to_string(),
+                profile: layout.profile_id,
+                summary: "quine via complete quoted prefix/core/suffix and shared CRC GF(2) solve"
+                    .to_string(),
+                warnings: vec![
+                    "actual layout, length candidates and budgets checked during generation"
+                        .to_string(),
+                ],
+            };
+            Outcome::ok(
+                plan,
+                GenerateReport::ok(variant, crc, nodes, edges, 0, 0, Vec::new()),
+            )
         }
         VariantKind::Loopy | VariantKind::Fractal => {
             let err = ZbError::not_implemented(format!(

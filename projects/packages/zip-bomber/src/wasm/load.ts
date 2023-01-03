@@ -22,12 +22,20 @@ type WasmBinding = {
     listVariants?: () => string;
     capabilitiesJson?: () => string;
     generateVariantJson?: (variant: string) => string;
-    default?: {
+    planVariantJson?: (variant: string) => string;
+    verifyZipBytesJson?: (bytesBase64: string) => string;
+    default?: ((input?: unknown) => Promise<unknown>) | {
         listVariants?: () => string;
         capabilitiesJson?: () => string;
         generateVariantJson?: (variant: string) => string;
     };
 };
+
+function bytesToB64(bytes: Uint8Array): string {
+    let text = "";
+    for (const byte of bytes) text += String.fromCharCode(byte);
+    return btoa(text);
+}
 
 function b64ToBytes(b64: string): Uint8Array {
     const bin = atob(b64);
@@ -40,10 +48,31 @@ function b64ToBytes(b64: string): Uint8Array {
 
 function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
     const generateVariantJson =
-        binding.generateVariantJson ?? binding.default?.generateVariantJson;
+        binding.generateVariantJson ?? (typeof binding.default === "object" ? binding.default.generateVariantJson : undefined);
     const capabilitiesJson =
-        binding.capabilitiesJson ?? binding.default?.capabilitiesJson;
+        binding.capabilitiesJson ?? (typeof binding.default === "object" ? binding.default.capabilitiesJson : undefined);
     return {
+        planVariant: binding.planVariantJson
+            ? (variant) => {
+                  const raw = JSON.parse(binding.planVariantJson!(variant));
+                  return {
+                      exitCode: raw.ok ? 0 : 2, ok: raw.ok,
+                      feasible: raw.feasible, summary: raw.summary, profile: raw.profile,
+                      reportJson: JSON.stringify(raw.report ?? {}),
+                      errorCategory: raw.error?.category, errorCode: raw.error?.code,
+                      errorMessage: raw.error?.message,
+                  };
+              } : undefined,
+        verifyZipBytes: binding.verifyZipBytesJson
+            ? (bytes) => {
+                  const raw = JSON.parse(binding.verifyZipBytesJson!(bytesToB64(bytes)));
+                  return {
+                      exitCode: raw.ok ? 0 : 1, ok: raw.ok,
+                      reportJson: JSON.stringify(raw.report ?? {}),
+                      errorCategory: raw.error?.category, errorCode: raw.error?.code,
+                      errorMessage: raw.error?.message,
+                  };
+              } : undefined,
         generateVariant: generateVariantJson
             ? (variant) => {
                   const raw = JSON.parse(generateVariantJson(variant)) as {
@@ -74,7 +103,10 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                   };
                   return {
                       entries: parsed.entries.map((e) => ({
-                          ...e,
+                          container: e.container,
+                          variant: e.variant,
+                          profile: e.profile,
+                          status: e.status,
                           topologyClass:
                               (e as { topology_class?: string }).topology_class ??
                               e.topologyClass,
@@ -91,7 +123,19 @@ export async function loadZipBomberWasm(): Promise<ZipBomberWasmApi> {
     let hooks: ZipBomberBackendHooks = {};
     try {
         const mod = (await import(ARTIFACT_PACKAGE)) as WasmBinding;
-        const listVariants = mod.listVariants ?? mod.default?.listVariants;
+        if (typeof mod.default === "function") {
+            if (typeof process !== "undefined" && process.versions?.node) {
+                const { readFile } = await import("node:fs/promises");
+                const { createRequire } = await import("node:module");
+                const { pathToFileURL } = await import("node:url");
+                const moduleUrl = pathToFileURL(createRequire(import.meta.url).resolve(ARTIFACT_PACKAGE));
+                const bytes = await readFile(new URL("./zb_wasm_bg.wasm", moduleUrl));
+                await mod.default({ module_or_path: bytes });
+            } else {
+                await mod.default();
+            }
+        }
+        const listVariants = mod.listVariants ?? (typeof mod.default === "object" ? mod.default.listVariants : undefined);
         if (typeof listVariants === "function") {
             listed = listVariants()
                 .split(",")

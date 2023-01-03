@@ -70,6 +70,6 @@ test("createZipBomber bomb succeeds when native binding is present", async () =>
         }
     }
     const quine = await zipQuine();
-    assert.equal(quine.ok, false);
+    assert.equal(quine.ok, Boolean(node.generateVariant));
     await api.dispose();
 });

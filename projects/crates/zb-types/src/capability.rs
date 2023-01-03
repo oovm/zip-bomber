@@ -67,7 +67,7 @@ impl CapabilitySet {
             (
                 VariantKind::Quine,
                 TopologyClass::SelfLoop,
-                CapabilityStatus::Declared,
+                CapabilityStatus::Implemented,
             ),
             (
                 VariantKind::Loopy,

@@ -170,7 +170,8 @@ export function loadZipBomberNode(): ZipBomberNodeApi {
     ];
     for (const name of candidates) {
         try {
-            const binding = require(name) as NativeBinding;
+            const module = require(name) as NativeBinding & { default?: NativeBinding };
+            const binding = module.default ?? module;
             const hooks = hooksFromBinding(binding);
             return {
                 listVariants: () =>

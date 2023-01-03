@@ -1,8 +1,7 @@
 //! Quine template registry.
 //!
-//! No verified DEFLATE self-reference skeleton is registered yet. Drivers still
-//! go through this table so adding the first Cox-style candidate is a localized
-//! change (Living `10` §10).
+//! Complete prefix/core/suffix skeletons accepted by bounded independent
+//! decoding and Acorn verification. Cross-backend capability remains separate.
 
 use zb_types::ZIP_PROFILE_V0;
 
@@ -19,7 +18,7 @@ pub struct QuineTemplateMeta {
 
 /// List quine templates registered for `profile`.
 ///
-/// Currently empty for all profiles. The first verified skeleton lands here.
+/// Unsupported profiles have no registered candidates.
 pub fn list_quine_templates(profile: &str) -> Vec<QuineTemplateMeta> {
     QUINE_TEMPLATES
         .iter()
@@ -28,15 +27,11 @@ pub fn list_quine_templates(profile: &str) -> Vec<QuineTemplateMeta> {
         .collect()
 }
 
-const QUINE_TEMPLATES: &[QuineTemplateMeta] = &[
-    // Intentionally empty until a DEFLATE self-reference skeleton is verified.
-    // Example shape once ready:
-    // QuineTemplateMeta {
-    //     id: "quine.stored-fixed.cox-core",
-    //     profile: ZIP_PROFILE_V0,
-    //     notes: "Cox L4/R4 translated to stored+fixed blocks",
-    // },
-];
+const QUINE_TEMPLATES: &[QuineTemplateMeta] = &[QuineTemplateMeta {
+    id: "quine.stored-fixed.prefix-suffix",
+    profile: ZIP_PROFILE_V0,
+    notes: "Cox-style quoted prefix/core/suffix with explicit terminal blocks",
+}];
 
 // Keep the profile constant referenced so the empty table stays profile-aware.
 const _: &str = ZIP_PROFILE_V0;

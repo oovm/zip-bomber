@@ -8,7 +8,10 @@
 mod crc;
 mod gf2;
 
-pub use crc::{crc32, crc32_affine_columns, u32_to_bits, CRC32_CHECK, CRC32_POLY};
+pub use crc::{
+    crc32, crc32_affine_columns, crc32_shared_columns, u32_to_bits, CrcByteSlot, CRC32_CHECK,
+    CRC32_POLY,
+};
 pub use gf2::{solve, solve_rows, BitMatrix, Gf2Solution};
 
 /// Stable variable identity inside a frozen skeleton problem.

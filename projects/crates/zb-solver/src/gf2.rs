@@ -68,8 +68,8 @@ impl BitMatrix {
             return;
         }
         let wpr = self.wpr();
-        let src_words: Vec<u64> = self.data[src * wpr..(src + 1) * wpr].to_vec();
-        for (w, bit) in src_words.into_iter().enumerate() {
+        for w in 0..wpr {
+            let bit = self.data[src * wpr + w];
             self.data[dst * wpr + w] ^= bit;
         }
     }

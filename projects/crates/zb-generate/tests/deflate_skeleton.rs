@@ -1,6 +1,4 @@
-use zb_generate::{
-    chain_repeats, encode_stored_block, expand_skeleton, SkeletonOp,
-};
+use zb_generate::{chain_repeats, encode_stored_block, expand_skeleton, SkeletonOp};
 
 #[test]
 fn expand_repeat_with_overlap() {
@@ -54,4 +52,21 @@ fn stored_block_is_legal_raw_deflate() {
     let mut out = Vec::new();
     decoder.read_to_end(&mut out).unwrap();
     assert_eq!(out, b"hi");
+}
+#[test]
+fn chained_copy_adjusts_one_and_two_byte_remainders() {
+    for length in [259, 260, 517, 518] {
+        let ops = zb_generate::chain_repeats(length, 8).unwrap();
+        let total: u32 = ops
+            .iter()
+            .map(|op| match op {
+                zb_generate::SkeletonOp::Repeat { length, .. } => {
+                    assert!(*length >= 3);
+                    u32::from(*length)
+                }
+                _ => panic!("unexpected opcode"),
+            })
+            .sum();
+        assert_eq!(total, length);
+    }
 }

@@ -38,6 +38,27 @@ fn validate_quine(request: &GenerateRequest) -> ZbResult<()> {
             "quine edge requires a non-empty member_path",
         ));
     }
+    let path = &edge.member_path;
+    if path.starts_with('/')
+        || path.contains('\\')
+        || path.contains(':')
+        || path.contains('\0')
+        || path.ends_with('/')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            "quine member_path must be a relative normalized POSIX file path",
+        ));
+    }
+    if edge.role != zb_types::EdgeRole::SelfReference {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            "quine edge requires self_reference role",
+        ));
+    }
     Ok(())
 }
 
