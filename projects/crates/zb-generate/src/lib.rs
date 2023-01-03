@@ -30,7 +30,10 @@ pub use zb_solver::{
     crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix,
     EquationId, Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK, CRC32_POLY,
 };
-pub use templates::{list_quine_templates, QuineTemplateMeta};
+pub use templates::{
+    cox_core_program, interpret_lz_quine, is_self_reproducing, list_quine_templates, LzOp,
+    QuineTemplateMeta,
+};
 pub use variants::ArtifactBundle;
 pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
 
