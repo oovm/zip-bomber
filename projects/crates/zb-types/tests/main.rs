@@ -1,5 +1,6 @@
 use zb_types::{
-    zip_layout, ArchiveEdge, EdgeRole, GenerateLimits, GenerateRequest, NodeId, TopologyGraph,
+    decode_base64, encode_base64, generate_request_from_json, generate_request_to_json, zip_layout,
+    ArchiveEdge, EdgeRole, GenerateLimits, GenerateRequest, NodeId, PayloadSpec, TopologyGraph,
     VariantKind, ZipProfile, ALL_VARIANTS, REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
 };
 
@@ -54,4 +55,36 @@ fn zip_profile_v0_and_limits_defaults() {
     let req = GenerateRequest::bare(VariantKind::Bomb);
     assert_eq!(req.profile, ZIP_PROFILE_V0);
     assert_eq!(req.limits.max_edges, 256);
+}
+
+#[test]
+fn wire_json_maps_self_member_path_and_base64_payloads() {
+    let json = r#"{
+        "schema":"zb.request/v2",
+        "container":"zip",
+        "variant":"quine",
+        "selfMemberPath":"recurse/again.zip",
+        "payloads":[
+            {"archivePath":"readme.txt","bytesBase64":"aGVsbG8="},
+            {"archivePath":"empty/"}
+        ]
+    }"#;
+    let request = generate_request_from_json(json).expect("wire decode");
+    assert_eq!(request.topology.edges[0].member_path, "recurse/again.zip");
+    assert_eq!(request.payloads.len(), 2);
+    assert_eq!(request.payloads[0].path, "readme.txt");
+    assert_eq!(request.payloads[0].bytes, b"hello");
+    assert_eq!(request.payloads[1].path, "empty/");
+    assert!(request.payloads[1].bytes.is_empty());
+
+    let mut roundtrip = GenerateRequest::bare(VariantKind::Quine);
+    roundtrip.topology = TopologyGraph::quine_self("release.zip", "recurse/again.zip");
+    roundtrip.payloads = vec![PayloadSpec {
+        path: "assets/说明.txt".into(),
+        bytes: "中文".as_bytes().to_vec(),
+    }];
+    let encoded = generate_request_to_json(&roundtrip).expect("wire encode");
+    let decoded = generate_request_from_json(&encoded).expect("wire roundtrip");
+    assert_eq!(decoded.payloads[0].bytes, "中文".as_bytes());
+    assert_eq!(decode_base64(&encode_base64(b"zb")).unwrap(), b"zb");
 }

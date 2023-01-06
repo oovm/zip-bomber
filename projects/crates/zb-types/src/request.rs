@@ -35,12 +35,17 @@ impl CrcStrategy {
     }
 }
 
-/// Optional embedded member (README, fixture bytes, …).
+/// Optional embedded member (README, fixture bytes, directory entry, …).
+///
+/// `path` is the archive-relative POSIX path (`archivePath` on the TS surface).
+/// A trailing `/` with empty `bytes` denotes an explicit directory entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PayloadSpec {
-    /// Archive member path.
+    /// Archive member path (UTF-8). Serde also accepts `archivePath`.
+    #[serde(alias = "archivePath", alias = "archive_path")]
     pub path: String,
-    /// Raw bytes to embed when the generator supports payloads.
+    /// Frozen input snapshot bytes to embed.
+    #[serde(default)]
     pub bytes: Vec<u8>,
 }
 

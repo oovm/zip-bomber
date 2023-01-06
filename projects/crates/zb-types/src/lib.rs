@@ -12,6 +12,7 @@ mod report;
 mod request;
 mod topology;
 mod variant;
+mod wire;
 
 pub use artifact::{Artifact, ArtifactId, ArtifactSet, DecimalU64};
 pub use capability::{CapabilityEntry, CapabilitySet, CapabilityStatus, TopologyClass};
@@ -25,3 +26,7 @@ pub use request::{
 };
 pub use topology::{AlignmentPolicy, ArchiveEdge, EdgeRole, NodeId, TopologyGraph};
 pub use variant::{VariantKind, ALL_VARIANTS};
+pub use wire::{
+    decode_base64, encode_base64, generate_request_from_json, generate_request_to_json,
+    WireArchiveEdge, WireGenerateRequest, WirePayloadSpec, WireTopologyGraph,
+};
