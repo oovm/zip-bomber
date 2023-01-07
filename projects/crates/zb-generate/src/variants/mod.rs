@@ -3,7 +3,7 @@
 mod bomb;
 mod fractal;
 mod loopy;
-mod quine;
+pub(crate) mod quine;
 
 use zb_types::{ArtifactSet, GenerateReport, GenerateRequest, VariantKind, ZbResult};
 

@@ -1,20 +1,41 @@
-//! Strict self-referential ZIP quine.
+//! Strict self-referential ZIP quine (optional ordinary attachments).
 
-use zb_solver::{crc32_shared_columns, solve_rows, CrcByteSlot};
+use std::io::Write;
+
+use flate2::write::DeflateEncoder;
+use flate2::Compression;
+use zb_solver::{crc32, crc32_shared_columns, solve_rows, CrcByteSlot};
 use zb_types::{
-    Artifact, ArtifactId, ArtifactSet, ContainerKind, GenerateReport, GenerateRequest, ZbError,
-    ZbResult, ZIP_PROFILE_V0,
+    Artifact, ArtifactId, ArtifactSet, ContainerKind, GenerateReport, GenerateRequest, PayloadSpec,
+    ZbError, ZbResult, ZIP_PROFILE_V0,
 };
 
+use crate::paths::validate_quine_members;
 use crate::templates::{encode_recursive_stream, list_quine_templates, QuineTemplateMeta};
 
 use super::ArtifactBundle;
 
+const GP_UTF8: u16 = 1 << 11;
+const METHOD_STORED: u16 = 0;
+const METHOD_DEFLATE: u16 = 8;
+const DOS_DIR_ATTR: u32 = 0x10;
+/// Prefix may quote at most this many leading bytes under the current template.
+const MAX_PREFIX: usize = 32763;
+/// Suffix length pre-check used by the recursive encoder.
+const MAX_SUFFIX: usize = 32755;
+
+#[derive(Debug, Clone)]
+struct OrdinaryMember {
+    name: Vec<u8>,
+    is_dir: bool,
+    method: u16,
+    crc: u32,
+    uncompressed: u32,
+    data: Vec<u8>,
+    original: Vec<u8>,
+}
+
 /// Generate a quine archive by enumerating verified templates.
-///
-/// Returns [`ZbError::search_exhausted`] when the registry has no candidate for
-/// the request profile. Topology must already pass [`crate::validate`] quine
-/// rules (single self-loop).
 pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
     let profile = if request.profile.is_empty() {
         ZIP_PROFILE_V0
@@ -52,14 +73,61 @@ pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
     )))
 }
 
+/// Compress ordinary payloads and report layout budgets without emitting CRC.
+pub fn plan_layout(request: &GenerateRequest) -> ZbResult<QuineLayoutPlan> {
+    let self_name = self_member_path(request)?;
+    validate_quine_members(self_name, &request.payloads)?;
+    let ordinary = prepare_ordinary_members(&request.payloads, request.limits.max_input_bytes)?;
+    let member_count = ordinary.len() + 1;
+    if member_count as u32 > request.limits.max_members {
+        return Err(ZbError::resource_limited(
+            "quine member count exceeds max_members",
+        ));
+    }
+    let self_name_bytes = self_name.as_bytes();
+    let ordinary_local = emit_ordinary_locals(&ordinary)?;
+    let ordinary_central = emit_ordinary_central(&ordinary)?;
+    let prefix_len = ordinary_local.len() + 30 + self_name_bytes.len();
+    let suffix_len = ordinary_central.len() + 46 + self_name_bytes.len() + 22;
+    if prefix_len > MAX_PREFIX || suffix_len > MAX_SUFFIX {
+        return Err(ZbError::resource_limited(format!(
+            "quine layout exceeds recursive window (prefix={prefix_len} suffix={suffix_len})"
+        )));
+    }
+    let compressed_payload_bytes: u64 = ordinary.iter().map(|m| m.data.len() as u64).sum();
+    Ok(QuineLayoutPlan {
+        self_member_path: self_name.to_string(),
+        ordinary_members: ordinary.len(),
+        prefix_len,
+        suffix_len,
+        compressed_payload_bytes,
+        prefix_budget_remaining: MAX_PREFIX - prefix_len,
+        suffix_budget_remaining: MAX_SUFFIX - suffix_len,
+    })
+}
+
+/// Layout estimate used by `plan` and reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuineLayoutPlan {
+    /// Self-reference member path.
+    pub self_member_path: String,
+    /// Ordinary payload / directory count.
+    pub ordinary_members: usize,
+    /// Serialized prefix length including the self local header.
+    pub prefix_len: usize,
+    /// Serialized suffix length including central directories and EOCD.
+    pub suffix_len: usize,
+    /// Sum of compressed ordinary member payloads.
+    pub compressed_payload_bytes: u64,
+    /// Remaining prefix budget under the current template.
+    pub prefix_budget_remaining: usize,
+    /// Remaining suffix budget under the current template.
+    pub suffix_budget_remaining: usize,
+}
+
 fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult<ArtifactBundle> {
     if meta.id != "quine.stored-fixed.prefix-suffix" {
         return Err(ZbError::not_implemented("unknown quine template"));
-    }
-    if !request.payloads.is_empty() {
-        return Err(ZbError::not_implemented(
-            "this quine template does not yet embed ordinary payload members",
-        ));
     }
     if request.limits.max_nodes < 1
         || request.limits.max_edges < 1
@@ -69,31 +137,48 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
             "quine requires one node, edge, and member",
         ));
     }
-    let name = request
-        .topology
-        .edges
-        .first()
-        .map(|e| e.member_path.as_str())
-        .unwrap_or("self.zip");
-    if name.len() > u16::MAX as usize {
-        return Err(ZbError::resource_limited("quine member name exceeds ZIP16"));
-    }
-    let name = name.as_bytes();
-    let prefix_len = 30 + name.len();
-    let suffix_len = 46 + name.len() + 22;
-    let working_bound = (prefix_len + suffix_len) as u64 * 16 + 65536;
+    let layout = plan_layout(request)?;
+    let self_name = layout.self_member_path.as_bytes();
+    let ordinary = prepare_ordinary_members(&request.payloads, request.limits.max_input_bytes)?;
+    let ordinary_local = emit_ordinary_locals(&ordinary)?;
+    let self_lfh_offset = ordinary_local.len();
+    let working_bound = (layout.prefix_len + layout.suffix_len) as u64 * 16 + 65536;
     if working_bound > request.limits.max_live_memory_bytes {
         return Err(ZbError::resource_limited(
             "quine working set exceeds max_live_memory_bytes",
         ));
     }
+
     let zero_crc = [0u8; 4];
-    let mut prefix = local_header(name, &zero_crc, 0, 0);
-    let mut suffix = central_and_eocd(name, &zero_crc, 0, 0);
-    // Measure once. A second compile uses the same frozen width choice and
-    // does not count as another outer candidate search.
+    let mut prefix = ordinary_local.clone();
+    prefix.extend(local_header(
+        self_name,
+        &zero_crc,
+        0,
+        0,
+        METHOD_DEFLATE,
+        false,
+    ));
+    let ordinary_central = emit_ordinary_central(&ordinary)?;
+    let mut suffix = ordinary_central;
+    suffix.extend(central_header(
+        self_name,
+        &zero_crc,
+        0,
+        0,
+        METHOD_DEFLATE,
+        self_lfh_offset as u32,
+        false,
+    ));
+    let provisional_cd_size = suffix.len() as u32;
+    suffix.extend(eocd(
+        (ordinary.len() + 1) as u16,
+        provisional_cd_size,
+        prefix.len() as u32,
+    ));
+
     let stream = encode_recursive_stream(&prefix, &suffix, request.limits.max_template_candidates)?;
-    let archive_len = prefix_len + stream.bytes.len() + suffix_len;
+    let archive_len = prefix.len() + stream.bytes.len() + suffix.len();
     if archive_len as u64 > request.limits.max_artifact_bytes {
         return Err(ZbError::resource_limited(
             "quine artifact exceeds max_artifact_bytes",
@@ -114,11 +199,34 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
             "quine CRC matrix or operation budget exhausted",
         ));
     }
+
     let compressed_len = stream.bytes.len() as u32;
     let archive_len32 = u32::try_from(archive_len)
         .map_err(|_| ZbError::resource_limited("quine archive exceeds ZIP32"))?;
-    prefix = local_header(name, &zero_crc, compressed_len, archive_len32);
-    suffix = central_and_eocd(name, &zero_crc, compressed_len, archive_len32);
+    prefix = ordinary_local;
+    prefix.extend(local_header(
+        self_name,
+        &zero_crc,
+        compressed_len,
+        archive_len32,
+        METHOD_DEFLATE,
+        false,
+    ));
+    let ordinary_central = emit_ordinary_central(&ordinary)?;
+    suffix = ordinary_central;
+    suffix.extend(central_header(
+        self_name,
+        &zero_crc,
+        compressed_len,
+        archive_len32,
+        METHOD_DEFLATE,
+        self_lfh_offset as u32,
+        false,
+    ));
+    let cd_size = suffix.len() as u32;
+    let cd_offset = (prefix.len() + compressed_len as usize) as u32;
+    suffix.extend(eocd((ordinary.len() + 1) as u16, cd_size, cd_offset));
+
     let stream = encode_recursive_stream(&prefix, &suffix, request.limits.max_template_candidates)?;
     if stream.bytes.len() != compressed_len as usize {
         return Err(ZbError::search_exhausted(
@@ -128,13 +236,17 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
     let mut archive = prefix;
     archive.extend_from_slice(&stream.bytes);
     archive.extend_from_slice(&suffix);
-    let cd_offset = 30 + name.len() + stream.bytes.len();
+
+    let self_crc_in_prefix = self_lfh_offset + 14;
+    let cd_self_in_suffix = rebuilt_central_len(&ordinary);
+    let prefix_len = self_lfh_offset + 30 + self_name.len();
     let crc_offsets = [
-        14,
-        prefix_len + stream.prefix_copy + 14,
-        prefix_len + stream.suffix_copy + 16,
-        cd_offset + 16,
+        self_crc_in_prefix,
+        prefix_len + stream.prefix_copy + self_crc_in_prefix,
+        prefix_len + stream.suffix_copy + cd_self_in_suffix + 16,
+        prefix_len + stream.bytes.len() + cd_self_in_suffix + 16,
     ];
+
     let slots: Vec<_> = crc_offsets
         .iter()
         .flat_map(|&offset| {
@@ -163,11 +275,12 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
     for offset in crc_offsets {
         archive[offset..offset + 4].copy_from_slice(&crc.to_le_bytes());
     }
-    if zb_solver::crc32(&archive) != crc {
+    if crc32(&archive) != crc {
         return Err(ZbError::verification_failed(
             "quine CRC solution failed back-substitution",
         ));
     }
+
     let mut check = flate2::Decompress::new(false);
     let mut decoded = vec![0; archive_len + 1];
     let status = check
@@ -188,12 +301,14 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
             "quine decoded bytes differ from archive",
         ));
     }
+    verify_ordinary_members(&archive, &ordinary)?;
     let verified = crate::verify::verify_zip_bytes(&archive)?;
     if !verified.ok {
         return Err(ZbError::verification_failed(
             "Acorn quine verification failed",
         ));
     }
+
     let artifact = Artifact {
         id: ArtifactId::new("quine-root"),
         container: ContainerKind::Zip,
@@ -211,6 +326,16 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
         artifact.bytes.len() as u64,
         vec![
             format!("template={}", meta.id),
+            format!("self_member_path={}", layout.self_member_path),
+            format!("ordinary_members={}", layout.ordinary_members),
+            format!(
+                "prefix_len={}; suffix_len={}; compressed_payload_bytes={}; prefix_budget_remaining={}; suffix_budget_remaining={}",
+                layout.prefix_len,
+                layout.suffix_len,
+                layout.compressed_payload_bytes,
+                layout.prefix_budget_remaining,
+                layout.suffix_budget_remaining
+            ),
             format!(
                 "crc_rank={}; requested_crc={}; shared_crc_occurrences=4; length_candidates={}",
                 solution.rank,
@@ -229,12 +354,176 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
     })
 }
 
-fn local_header(name: &[u8], crc: &[u8; 4], compressed: u32, size: u32) -> Vec<u8> {
+fn self_member_path(request: &GenerateRequest) -> ZbResult<&str> {
+    request
+        .topology
+        .edges
+        .first()
+        .map(|e| e.member_path.as_str())
+        .ok_or_else(|| ZbError::new(zb_types::ErrorCode::InvalidTopology, "quine missing edge"))
+}
+
+fn prepare_ordinary_members(
+    payloads: &[PayloadSpec],
+    max_input_bytes: u64,
+) -> ZbResult<Vec<OrdinaryMember>> {
+    let total: u64 = payloads.iter().map(|p| p.bytes.len() as u64).sum();
+    if total > max_input_bytes {
+        return Err(ZbError::resource_limited(
+            "quine payloads exceed max_input_bytes",
+        ));
+    }
+    let mut out = Vec::with_capacity(payloads.len());
+    for payload in payloads {
+        let is_dir = payload.path.ends_with('/');
+        let name = payload.path.as_bytes().to_vec();
+        let original = payload.bytes.clone();
+        let (method, data) = if is_dir {
+            (METHOD_STORED, Vec::new())
+        } else {
+            compress_payload(&original)?
+        };
+        let uncompressed = u32::try_from(original.len())
+            .map_err(|_| ZbError::resource_limited("payload exceeds ZIP32 size"))?;
+        let crc = crc32(&original);
+        out.push(OrdinaryMember {
+            name,
+            is_dir,
+            method,
+            crc,
+            uncompressed,
+            data,
+            original,
+        });
+    }
+    Ok(out)
+}
+
+fn compress_payload(data: &[u8]) -> ZbResult<(u16, Vec<u8>)> {
+    if data.is_empty() {
+        return Ok((METHOD_STORED, Vec::new()));
+    }
+    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(6));
+    encoder
+        .write_all(data)
+        .map_err(|e| ZbError::new(zb_types::ErrorCode::Internal, format!("deflate failed: {e}")))?;
+    let compressed = encoder.finish().map_err(|e| {
+        ZbError::new(
+            zb_types::ErrorCode::Internal,
+            format!("deflate finish failed: {e}"),
+        )
+    })?;
+    if compressed.len() < data.len() {
+        Ok((METHOD_DEFLATE, compressed))
+    } else {
+        Ok((METHOD_STORED, data.to_vec()))
+    }
+}
+
+fn emit_ordinary_locals(members: &[OrdinaryMember]) -> ZbResult<Vec<u8>> {
+    let mut out = Vec::new();
+    for member in members {
+        out.extend(local_header(
+            &member.name,
+            &member.crc.to_le_bytes(),
+            member.data.len() as u32,
+            member.uncompressed,
+            member.method,
+            member.is_dir,
+        ));
+        out.extend_from_slice(&member.data);
+    }
+    Ok(out)
+}
+
+fn emit_ordinary_central(members: &[OrdinaryMember]) -> ZbResult<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut local_cursor = 0usize;
+    for member in members {
+        out.extend(central_header(
+            &member.name,
+            &member.crc.to_le_bytes(),
+            member.data.len() as u32,
+            member.uncompressed,
+            member.method,
+            local_cursor as u32,
+            member.is_dir,
+        ));
+        local_cursor += 30 + member.name.len() + member.data.len();
+    }
+    Ok(out)
+}
+
+fn rebuilt_central_len(members: &[OrdinaryMember]) -> usize {
+    members.iter().map(|m| 46 + m.name.len()).sum()
+}
+
+fn verify_ordinary_members(archive: &[u8], members: &[OrdinaryMember]) -> ZbResult<()> {
+    let mut offset = 0usize;
+    for member in members {
+        let name_len = member.name.len();
+        let lfh = 30 + name_len;
+        if archive.len() < offset + lfh + member.data.len() {
+            return Err(ZbError::verification_failed(
+                "ordinary member local range out of bounds",
+            ));
+        }
+        if &archive[offset + 30..offset + lfh] != member.name.as_slice() {
+            return Err(ZbError::verification_failed(
+                "ordinary member name mismatch",
+            ));
+        }
+        let data = &archive[offset + lfh..offset + lfh + member.data.len()];
+        let decoded = match member.method {
+            METHOD_STORED => data.to_vec(),
+            METHOD_DEFLATE => {
+                let mut decoder = flate2::Decompress::new(false);
+                let mut out = vec![0; member.original.len() + 1];
+                let status = decoder
+                    .decompress(data, &mut out, flate2::FlushDecompress::Finish)
+                    .map_err(|e| {
+                        ZbError::verification_failed(format!("attachment inflate failed: {e}"))
+                    })?;
+                if status != flate2::Status::StreamEnd
+                    || decoder.total_in() as usize != data.len()
+                {
+                    return Err(ZbError::verification_failed(
+                        "attachment decoder did not finish cleanly",
+                    ));
+                }
+                out.truncate(decoder.total_out() as usize);
+                out
+            }
+            _ => {
+                return Err(ZbError::verification_failed(
+                    "unsupported ordinary member method",
+                ))
+            }
+        };
+        if decoded != member.original {
+            return Err(ZbError::verification_failed(format!(
+                "attachment `{}` bytes differ from input snapshot",
+                String::from_utf8_lossy(&member.name)
+            )));
+        }
+        offset += lfh + member.data.len();
+    }
+    Ok(())
+}
+
+fn local_header(
+    name: &[u8],
+    crc: &[u8; 4],
+    compressed: u32,
+    size: u32,
+    method: u16,
+    _is_dir: bool,
+) -> Vec<u8> {
     let mut b = Vec::with_capacity(30 + name.len());
     b.extend_from_slice(&0x04034b50u32.to_le_bytes());
     b.extend_from_slice(&20u16.to_le_bytes());
-    b.extend_from_slice(&0x800u16.to_le_bytes());
-    b.extend_from_slice(&8u16.to_le_bytes());
+    b.extend_from_slice(&GP_UTF8.to_le_bytes());
+    b.extend_from_slice(&method.to_le_bytes());
     b.extend_from_slice(&[0; 4]);
     b.extend_from_slice(crc);
     b.extend_from_slice(&compressed.to_le_bytes());
@@ -245,28 +534,45 @@ fn local_header(name: &[u8], crc: &[u8; 4], compressed: u32, size: u32) -> Vec<u
     b
 }
 
-fn central_and_eocd(name: &[u8], crc: &[u8; 4], compressed: u32, size: u32) -> Vec<u8> {
-    let mut b = Vec::with_capacity(46 + name.len() + 22);
+fn central_header(
+    name: &[u8],
+    crc: &[u8; 4],
+    compressed: u32,
+    size: u32,
+    method: u16,
+    local_offset: u32,
+    is_dir: bool,
+) -> Vec<u8> {
+    let mut b = Vec::with_capacity(46 + name.len());
     b.extend_from_slice(&0x02014b50u32.to_le_bytes());
     b.extend_from_slice(&20u16.to_le_bytes());
     b.extend_from_slice(&20u16.to_le_bytes());
-    b.extend_from_slice(&0x800u16.to_le_bytes());
-    b.extend_from_slice(&8u16.to_le_bytes());
+    b.extend_from_slice(&GP_UTF8.to_le_bytes());
+    b.extend_from_slice(&method.to_le_bytes());
     b.extend_from_slice(&[0; 4]);
     b.extend_from_slice(crc);
     b.extend_from_slice(&compressed.to_le_bytes());
     b.extend_from_slice(&size.to_le_bytes());
     b.extend_from_slice(&(name.len() as u16).to_le_bytes());
-    b.extend_from_slice(&[0; 8]);
-    b.extend_from_slice(&0u32.to_le_bytes());
-    b.extend_from_slice(&0u32.to_le_bytes());
+    b.extend_from_slice(&0u16.to_le_bytes()); // extra
+    b.extend_from_slice(&0u16.to_le_bytes()); // comment
+    b.extend_from_slice(&0u16.to_le_bytes()); // disk
+    b.extend_from_slice(&0u16.to_le_bytes()); // int attrs
+    let ext = if is_dir { DOS_DIR_ATTR } else { 0 };
+    b.extend_from_slice(&ext.to_le_bytes());
+    b.extend_from_slice(&local_offset.to_le_bytes());
     b.extend_from_slice(name);
+    b
+}
+
+fn eocd(count: u16, cd_size: u32, cd_offset: u32) -> Vec<u8> {
+    let mut b = Vec::with_capacity(22);
     b.extend_from_slice(&0x06054b50u32.to_le_bytes());
     b.extend_from_slice(&[0; 4]);
-    b.extend_from_slice(&1u16.to_le_bytes());
-    b.extend_from_slice(&1u16.to_le_bytes());
-    b.extend_from_slice(&((46 + name.len()) as u32).to_le_bytes());
-    b.extend_from_slice(&((30 + name.len()) as u32 + compressed).to_le_bytes());
+    b.extend_from_slice(&count.to_le_bytes());
+    b.extend_from_slice(&count.to_le_bytes());
+    b.extend_from_slice(&cd_size.to_le_bytes());
+    b.extend_from_slice(&cd_offset.to_le_bytes());
     b.extend_from_slice(&0u16.to_le_bytes());
     b
 }

@@ -2,6 +2,8 @@
 
 use zb_types::{ErrorCode, GenerateRequest, VariantKind, ZbError, ZbResult};
 
+use crate::paths::validate_quine_members;
+
 /// Validate topology shape for the requested variant.
 pub fn normalize(request: &GenerateRequest) -> ZbResult<()> {
     match request.variant {
@@ -32,33 +34,13 @@ fn validate_quine(request: &GenerateRequest) -> ZbResult<()> {
             "quine edge must be a self-loop on the sole node",
         ));
     }
-    if edge.member_path.is_empty() {
-        return Err(ZbError::new(
-            ErrorCode::InvalidTopology,
-            "quine edge requires a non-empty member_path",
-        ));
-    }
-    let path = &edge.member_path;
-    if path.starts_with('/')
-        || path.contains('\\')
-        || path.contains(':')
-        || path.contains('\0')
-        || path.ends_with('/')
-        || path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-    {
-        return Err(ZbError::new(
-            ErrorCode::InvalidTopology,
-            "quine member_path must be a relative normalized POSIX file path",
-        ));
-    }
     if edge.role != zb_types::EdgeRole::SelfReference {
         return Err(ZbError::new(
             ErrorCode::InvalidTopology,
             "quine edge requires self_reference role",
         ));
     }
+    validate_quine_members(&edge.member_path, &request.payloads)?;
     Ok(())
 }
 

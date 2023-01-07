@@ -6,6 +6,7 @@ mod crc;
 mod deflate;
 mod emit;
 mod layout;
+mod paths;
 mod templates;
 mod validate;
 mod variants;
@@ -118,25 +119,32 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
                     GenerateReport::failed(variant, crc, nodes, edges, &err),
                 );
             }
-            if !request.payloads.is_empty() {
-                let err = ZbError::not_implemented(
-                    "this quine template does not yet embed ordinary payload members",
-                );
-                return Outcome::err(
-                    err.clone(),
-                    GenerateReport::failed(variant, crc, nodes, edges, &err),
-                );
-            }
+            let quine_layout = match variants::quine::plan_layout(&request) {
+                Ok(plan) => plan,
+                Err(err) => {
+                    return Outcome::err(
+                        err.clone(),
+                        GenerateReport::failed(variant, crc, nodes, edges, &err),
+                    );
+                }
+            };
             let plan = PlanSummary {
                 feasible: true,
                 variant: variant.as_str().to_string(),
                 profile: layout.profile_id,
-                summary: "quine via complete quoted prefix/core/suffix and shared CRC GF(2) solve"
-                    .to_string(),
-                warnings: vec![
-                    "actual layout, length candidates and budgets checked during generation"
-                        .to_string(),
-                ],
+                summary: format!(
+                    "quine via complete quoted prefix/core/suffix and shared CRC GF(2) solve (self=`{}` ordinary={} prefix={} suffix={})",
+                    quine_layout.self_member_path,
+                    quine_layout.ordinary_members,
+                    quine_layout.prefix_len,
+                    quine_layout.suffix_len
+                ),
+                warnings: vec![format!(
+                    "prefix_budget_remaining={} suffix_budget_remaining={} compressed_payload_bytes={}",
+                    quine_layout.prefix_budget_remaining,
+                    quine_layout.suffix_budget_remaining,
+                    quine_layout.compressed_payload_bytes
+                )],
             };
             Outcome::ok(
                 plan,
