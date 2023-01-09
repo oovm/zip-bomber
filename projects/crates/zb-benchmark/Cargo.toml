@@ -1,0 +1,25 @@
+[package]
+name = "zb-benchmark"
+version.workspace = true
+authors.workspace = true
+description = "Simple performance probes for zb generate and CRC solving"
+categories = ["development-tools"]
+homepage = "https://github.com/notedge/zip-bomber"
+repository = "https://github.com/notedge/zip-bomber"
+documentation = "https://docs.rs/zb-benchmark"
+readme = "readme.md"
+license.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "zb-benchmark"
+path = "src/main.rs"
+
+[dependencies]
+zb-generate = { workspace = true }
+zb-solver = { workspace = true }
+zb-types = { workspace = true }
+
+[features]
+default = []

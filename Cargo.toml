@@ -18,6 +18,7 @@ edition = "2021"
 zb-types = { path = "projects/crates/zb-types" }
 zb-solver = { path = "projects/crates/zb-solver" }
 zb-generate = { path = "projects/crates/zb-generate" }
+zb-benchmark = { path = "projects/crates/zb-benchmark" }
 zb-napi = { path = "projects/crates/zb-napi" }
 zb-wasm = { path = "projects/crates/zb-wasm" }
 acorn-zip = { path = "../acorn.rs/examples/acorn-zip" }
