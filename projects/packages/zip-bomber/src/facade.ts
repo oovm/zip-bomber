@@ -12,6 +12,7 @@ import {
     type ZipBomberApi,
     type ZbError,
 } from "./types.js";
+import { encodeGenerateRequestJson } from "./wire.js";
 
 /** Native / WASM generate hook result (root archive bytes). */
 export type BackendGenerateResult = {
@@ -49,6 +50,10 @@ export type BackendVerifyResult = {
 
 /** Optional backend hooks so Node/WASM loaders stay isomorphic. */
 export type ZipBomberBackendHooks = {
+    /** Preferred full-request path (`zb.request/v2` JSON). */
+    generateRequestJson?: (requestJson: string) => BackendGenerateResult;
+    planRequestJson?: (requestJson: string) => BackendPlanResult;
+    /** Bare-variant fallback used by older bindings. */
     generateVariant?: (variant: string) => BackendGenerateResult;
     planVariant?: (variant: string) => BackendPlanResult;
     verifyZipBytes?: (bytes: Uint8Array) => BackendVerifyResult;
@@ -94,6 +99,37 @@ function bareRequest(variant: VariantId): GenerateRequest {
     };
 }
 
+function mergeRequest(
+    variant: VariantId,
+    options?: Partial<GenerateRequest>,
+): GenerateRequest {
+    return {
+        schema: "zb.request/v2",
+        container: "zip",
+        variant,
+        topology: options?.topology,
+        selfMemberPath: options?.selfMemberPath,
+        payloads: options?.payloads,
+    };
+}
+
+function requestNeedsJson(request: GenerateRequest): boolean {
+    return Boolean(
+        request.selfMemberPath ||
+            (request.payloads && request.payloads.length > 0) ||
+            request.topology !== undefined,
+    );
+}
+
+function toWireJson(request: GenerateRequest): string {
+    return encodeGenerateRequestJson({
+        variant: request.variant,
+        selfMemberPath: request.selfMemberPath,
+        payloads: request.payloads,
+        topology: request.topology,
+    });
+}
+
 function defaultCapabilities(bombStatus: CapabilityStatus): CapabilitySet {
     return {
         entries: [
@@ -109,7 +145,9 @@ function defaultCapabilities(bombStatus: CapabilityStatus): CapabilitySet {
                             ? "directed_cycle"
                             : "fractal_finite",
                 profile: "zip.profile/v0-stub",
-                status: (variant === "bomb" ? bombStatus : "declared") as CapabilityStatus,
+                status: (variant === "bomb" || variant === "quine"
+                    ? bombStatus
+                    : "declared") as CapabilityStatus,
             })),
             {
                 container: "zip",
@@ -198,7 +236,9 @@ export function createSharedZipBomberApi(
     hooks: ZipBomberBackendHooks = {},
 ): ZipBomberApi {
     let disposed = false;
-    const hasGenerate = typeof hooks.generateVariant === "function";
+    const hasGenerate =
+        typeof hooks.generateRequestJson === "function" ||
+        typeof hooks.generateVariant === "function";
 
     const guard = async <T>(run: () => Promise<Outcome<T>>): Promise<Outcome<T>> => {
         if (disposed) {
@@ -219,23 +259,55 @@ export function createSharedZipBomberApi(
         return run();
     };
 
-    const runVariant = (variant: VariantId): Outcome<ArtifactSet> => {
-        if (hasGenerate) {
-            return outcomeFromBackend(variant, hooks.generateVariant!(variant));
+    const runRequest = (request: GenerateRequest): Outcome<ArtifactSet> => {
+        if (hooks.generateRequestJson && requestNeedsJson(request)) {
+            return outcomeFromBackend(
+                request.variant,
+                hooks.generateRequestJson(toWireJson(request)),
+            );
         }
-        return failVariant(variant);
+        if (hooks.generateRequestJson) {
+            return outcomeFromBackend(
+                request.variant,
+                hooks.generateRequestJson(toWireJson(request)),
+            );
+        }
+        if (hooks.generateVariant) {
+            if (requestNeedsJson(request)) {
+                return {
+                    ok: false,
+                    error: {
+                        category: "backend_unavailable",
+                        code: "ZB_BACKEND_UNAVAILABLE",
+                        message:
+                            "backend lacks generateRequestJson for selfMemberPath/payloads",
+                    },
+                    report: notImplementedReport(request.variant),
+                };
+            }
+            return outcomeFromBackend(
+                request.variant,
+                hooks.generateVariant(request.variant),
+            );
+        }
+        return failVariant(request.variant);
     };
 
-    const planVariant = (variant: VariantId): Outcome<PlanSummary> => {
-        if (hooks.planVariant) {
-            const result = hooks.planVariant(variant);
-            const report = parseReport(result.reportJson, variant);
+    const planRequest = (request: GenerateRequest): Outcome<PlanSummary> => {
+        const runJson = hooks.planRequestJson
+            ? () => hooks.planRequestJson!(toWireJson(request))
+            : hooks.planVariant && !requestNeedsJson(request)
+              ? () => hooks.planVariant!(request.variant)
+              : undefined;
+        if (runJson) {
+            const result = runJson();
+            const report = parseReport(result.reportJson, request.variant);
             if (result.ok) {
                 return {
                     ok: true,
                     value: {
                         feasible: result.feasible ?? true,
-                        variant,
+                        variant: request.variant,
                         profile: result.profile ?? "zip.profile/v0-stub",
                         summary: result.summary ?? "planned",
                         warnings: report.warnings ?? [],
@@ -248,15 +320,15 @@ export function createSharedZipBomberApi(
                 error: {
                     category: (result.errorCategory as ZbError["category"]) ?? "not_implemented",
                     code: result.errorCode ?? "ZB_NOT_IMPLEMENTED",
-                    message: result.errorMessage ?? `plan for \`${variant}\` failed`,
+                    message: result.errorMessage ?? `plan for \`${request.variant}\` failed`,
                 },
                 report,
             };
         }
         return {
             ok: false,
-            error: notImplementedError(variant),
-            report: notImplementedReport(variant),
+            error: notImplementedError(request.variant),
+            report: notImplementedReport(request.variant),
         };
     };
 
@@ -330,25 +402,25 @@ export function createSharedZipBomberApi(
             return defaultCapabilities(hasGenerate ? "implemented" : "declared");
         },
         plan(request) {
-            return guard(async () => planVariant(request.variant));
+            return guard(async () => planRequest(request));
         },
         generate(request) {
-            return guard(async () => runVariant(request.variant));
+            return guard(async () => runRequest(request));
         },
         verify(input) {
             return guard(async () => verifyBytes(input));
         },
-        zipBomb() {
-            return guard(async () => runVariant("bomb"));
+        zipBomb(options) {
+            return guard(async () => runRequest(mergeRequest("bomb", options)));
         },
-        zipQuine() {
-            return guard(async () => runVariant("quine"));
+        zipQuine(options) {
+            return guard(async () => runRequest(mergeRequest("quine", options)));
         },
-        zipLoopy() {
-            return guard(async () => runVariant("loopy"));
+        zipLoopy(options) {
+            return guard(async () => runRequest(mergeRequest("loopy", options)));
         },
-        zipFractal() {
-            return guard(async () => runVariant("fractal"));
+        zipFractal(options) {
+            return guard(async () => runRequest(mergeRequest("fractal", options)));
         },
         async dispose() {
             disposed = true;
@@ -358,37 +430,45 @@ export function createSharedZipBomberApi(
 }
 
 /** Convenience helpers shared by node/wasm entrypoints (stub backend). */
-export async function zipBomb(): Promise<Outcome<ArtifactSet>> {
+export async function zipBomb(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipBomb();
+        return await api.zipBomb(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipQuine(): Promise<Outcome<ArtifactSet>> {
+export async function zipQuine(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipQuine();
+        return await api.zipQuine(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipLoopy(): Promise<Outcome<ArtifactSet>> {
+export async function zipLoopy(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipLoopy();
+        return await api.zipLoopy(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipFractal(): Promise<Outcome<ArtifactSet>> {
+export async function zipFractal(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipFractal();
+        return await api.zipFractal(options);
     } finally {
         await api.dispose();
     }

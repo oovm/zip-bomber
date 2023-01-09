@@ -84,12 +84,24 @@ export type CapabilitySet = {
     entries: CapabilityEntry[];
 };
 
+/** Ordinary attachment / directory entry on the public TS surface. */
+export type PayloadSpec = {
+    /** Archive-relative POSIX path (`empty/` denotes a directory entry). */
+    archivePath: string;
+    /** Frozen input snapshot bytes. */
+    bytes?: Uint8Array;
+};
+
 export type GenerateRequest = {
     schema: "zb.request/v2";
     container: ContainerId;
     variant: VariantId;
     /** Opaque topology object for template stubs. */
     topology?: unknown;
+    /** Quine self-reference member path. Maps onto the sole self-loop edge. */
+    selfMemberPath?: string;
+    /** Ordinary attachments and explicit directory entries. */
+    payloads?: PayloadSpec[];
 };
 
 export type PlanSummary = {
@@ -114,9 +126,9 @@ export type ZipBomberApi = {
         input: ArtifactSet,
         spec?: unknown,
     ): Promise<Outcome<VerifySummary>>;
-    zipBomb(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
-    zipQuine(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
-    zipLoopy(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
-    zipFractal(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
+    zipBomb(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
+    zipQuine(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
+    zipLoopy(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
+    zipFractal(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
     dispose(): Promise<void>;
 };

@@ -6,6 +6,7 @@ import {
     VARIANTS,
     type ArtifactSet,
     type CapabilitySet,
+    type GenerateRequest,
     type Outcome,
     type VariantId,
     type ZipBomberApi,
@@ -22,12 +23,16 @@ type WasmBinding = {
     listVariants?: () => string;
     capabilitiesJson?: () => string;
     generateVariantJson?: (variant: string) => string;
+    generateRequestJson?: (requestJson: string) => string;
     planVariantJson?: (variant: string) => string;
+    planRequestJson?: (requestJson: string) => string;
     verifyZipBytesJson?: (bytesBase64: string) => string;
     default?: ((input?: unknown) => Promise<unknown>) | {
         listVariants?: () => string;
         capabilitiesJson?: () => string;
         generateVariantJson?: (variant: string) => string;
+        generateRequestJson?: (requestJson: string) => string;
+        planRequestJson?: (requestJson: string) => string;
     };
 };
 
@@ -47,11 +52,31 @@ function b64ToBytes(b64: string): Uint8Array {
 }
 
 function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
+    const fromDefault = typeof binding.default === "object" ? binding.default : undefined;
     const generateVariantJson =
-        binding.generateVariantJson ?? (typeof binding.default === "object" ? binding.default.generateVariantJson : undefined);
+        binding.generateVariantJson ?? fromDefault?.generateVariantJson;
+    const generateRequestJson =
+        binding.generateRequestJson ?? fromDefault?.generateRequestJson;
+    const planRequestJson = binding.planRequestJson ?? fromDefault?.planRequestJson;
     const capabilitiesJson =
-        binding.capabilitiesJson ?? (typeof binding.default === "object" ? binding.default.capabilitiesJson : undefined);
+        binding.capabilitiesJson ?? fromDefault?.capabilitiesJson;
     return {
+        planRequestJson: planRequestJson
+            ? (requestJson) => {
+                  const raw = JSON.parse(planRequestJson(requestJson));
+                  return {
+                      exitCode: raw.ok ? 0 : 2,
+                      ok: raw.ok,
+                      feasible: raw.feasible,
+                      summary: raw.summary,
+                      profile: raw.profile,
+                      reportJson: JSON.stringify(raw.report ?? {}),
+                      errorCategory: raw.error?.category,
+                      errorCode: raw.error?.code,
+                      errorMessage: raw.error?.message,
+                  };
+              }
+            : undefined,
         planVariant: binding.planVariantJson
             ? (variant) => {
                   const raw = JSON.parse(binding.planVariantJson!(variant));
@@ -73,6 +98,29 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                       errorMessage: raw.error?.message,
                   };
               } : undefined,
+        generateRequestJson: generateRequestJson
+            ? (requestJson) => {
+                  const raw = JSON.parse(generateRequestJson(requestJson)) as {
+                      ok: boolean;
+                      bytesBase64?: string;
+                      report?: unknown;
+                      error?: {
+                          category?: string;
+                          code?: string;
+                          message?: string;
+                      };
+                  };
+                  return {
+                      exitCode: raw.ok ? 0 : 2,
+                      ok: raw.ok,
+                      bytes: raw.bytesBase64 ? b64ToBytes(raw.bytesBase64) : undefined,
+                      reportJson: JSON.stringify(raw.report ?? {}),
+                      errorCategory: raw.error?.category,
+                      errorCode: raw.error?.code,
+                      errorMessage: raw.error?.message,
+                  };
+              }
+            : undefined,
         generateVariant: generateVariantJson
             ? (variant) => {
                   const raw = JSON.parse(generateVariantJson(variant)) as {
@@ -161,37 +209,45 @@ export async function createZipBomber(): Promise<ZipBomberApi> {
     return api.createZipBomber();
 }
 
-export async function zipBomb(): Promise<Outcome<ArtifactSet>> {
+export async function zipBomb(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipBomb();
+        return await api.zipBomb(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipQuine(): Promise<Outcome<ArtifactSet>> {
+export async function zipQuine(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipQuine();
+        return await api.zipQuine(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipLoopy(): Promise<Outcome<ArtifactSet>> {
+export async function zipLoopy(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipLoopy();
+        return await api.zipLoopy(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipFractal(): Promise<Outcome<ArtifactSet>> {
+export async function zipFractal(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipFractal();
+        return await api.zipFractal(options);
     } finally {
         await api.dispose();
     }

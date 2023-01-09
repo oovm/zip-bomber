@@ -10,6 +10,7 @@ export type {
     GenerateReport,
     GenerateRequest,
     Outcome,
+    PayloadSpec,
     VariantId,
     ZipBomberApi,
     ZbError,
@@ -25,4 +26,4 @@ export {
 export type { BackendGenerateResult, ZipBomberBackendHooks } from "./facade.js";
 export type { ZipBomberApiFactory, ZipBomberBackend } from "./api.js";
 export { notImplementedError, runtimeDisposedError } from "./errors.js";
-export { toUint8Array } from "./wire.js";
+export { encodeBase64, encodeGenerateRequestJson, toUint8Array } from "./wire.js";

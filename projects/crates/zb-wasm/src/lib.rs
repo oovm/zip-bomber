@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 use zb_generate::{
     capabilities, generate, list_variants, plan_generate, report_json, verify_zip_bytes,
 };
-use zb_types::{GenerateRequest, Outcome, VariantKind};
+use zb_types::{generate_request_from_json, GenerateRequest, Outcome, VariantKind};
 
 /// Comma-separated variant ids for capability probes.
 #[wasm_bindgen(js_name = listVariants)]
@@ -58,12 +58,7 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
     out
 }
 
-/// Plan a bare variant and return JSON `{ ok, feasible?, summary?, profile?, report, error? }`.
-#[wasm_bindgen(js_name = planVariantJson)]
-pub fn plan_variant_json(variant: String) -> Result<String, JsValue> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
-    let request = GenerateRequest::bare(kind);
+fn plan_payload(request: GenerateRequest) -> Result<String, JsValue> {
     let payload = match plan_generate(request) {
         Outcome::Ok { value, report, .. } => {
             let report = report_json(&report).map_err(|err| JsValue::from_str(&err.to_string()))?;
@@ -91,6 +86,51 @@ pub fn plan_variant_json(variant: String) -> Result<String, JsValue> {
         }
     };
     serde_json::to_string(&payload).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+fn generate_payload(request: GenerateRequest) -> Result<String, JsValue> {
+    let payload = match generate(request) {
+        Outcome::Ok { value, report, .. } => {
+            let report = report_json(&report).map_err(|err| JsValue::from_str(&err.to_string()))?;
+            let bytes = root_bytes(&value);
+            serde_json::json!({
+                "ok": true,
+                "bytesBase64": bytes_to_b64(&bytes),
+                "byteLength": bytes.len(),
+                "root": value.root.0,
+                "report": serde_json::from_str::<serde_json::Value>(&report).unwrap_or(serde_json::Value::Null)
+            })
+        }
+        Outcome::Err { error, report, .. } => {
+            let report = report_json(&report).map_err(|err| JsValue::from_str(&err.to_string()))?;
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "category": error.category.as_str(),
+                    "code": error.code.as_str(),
+                    "message": error.message,
+                },
+                "report": serde_json::from_str::<serde_json::Value>(&report).unwrap_or(serde_json::Value::Null)
+            })
+        }
+    };
+    serde_json::to_string(&payload).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+/// Plan a bare variant and return JSON `{ ok, feasible?, summary?, profile?, report, error? }`.
+#[wasm_bindgen(js_name = planVariantJson)]
+pub fn plan_variant_json(variant: String) -> Result<String, JsValue> {
+    let kind = VariantKind::parse(&variant)
+        .ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
+    plan_payload(GenerateRequest::bare(kind))
+}
+
+/// Plan from a full `zb.request/v2` JSON wire document.
+#[wasm_bindgen(js_name = planRequestJson)]
+pub fn plan_request_json(request_json: String) -> Result<String, JsValue> {
+    let request = generate_request_from_json(&request_json)
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    plan_payload(request)
 }
 
 fn b64_to_bytes(b64: &str) -> Result<Vec<u8>, JsValue> {
@@ -151,31 +191,13 @@ pub fn verify_zip_bytes_json(bytes_base64: String) -> Result<String, JsValue> {
 pub fn generate_variant_json(variant: String) -> Result<String, JsValue> {
     let kind = VariantKind::parse(&variant)
         .ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
-    let request = GenerateRequest::bare(kind);
-    let payload = match generate(request) {
-        Outcome::Ok { value, report, .. } => {
-            let report = report_json(&report).map_err(|err| JsValue::from_str(&err.to_string()))?;
-            let bytes = root_bytes(&value);
-            serde_json::json!({
-                "ok": true,
-                "bytesBase64": bytes_to_b64(&bytes),
-                "byteLength": bytes.len(),
-                "root": value.root.0,
-                "report": serde_json::from_str::<serde_json::Value>(&report).unwrap_or(serde_json::Value::Null)
-            })
-        }
-        Outcome::Err { error, report, .. } => {
-            let report = report_json(&report).map_err(|err| JsValue::from_str(&err.to_string()))?;
-            serde_json::json!({
-                "ok": false,
-                "error": {
-                    "category": error.category.as_str(),
-                    "code": error.code.as_str(),
-                    "message": error.message,
-                },
-                "report": serde_json::from_str::<serde_json::Value>(&report).unwrap_or(serde_json::Value::Null)
-            })
-        }
-    };
-    serde_json::to_string(&payload).map_err(|err| JsValue::from_str(&err.to_string()))
+    generate_payload(GenerateRequest::bare(kind))
+}
+
+/// Generate from a full `zb.request/v2` JSON wire document.
+#[wasm_bindgen(js_name = generateRequestJson)]
+pub fn generate_request_json(request_json: String) -> Result<String, JsValue> {
+    let request = generate_request_from_json(&request_json)
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    generate_payload(request)
 }

@@ -6,6 +6,7 @@ import {
 import {
     VARIANTS,
     type CapabilitySet,
+    type GenerateRequest,
     type Outcome,
     type ArtifactSet,
     type VariantId,
@@ -62,26 +63,10 @@ type NativeBinding = {
         profile: string;
         status: string;
     }>;
-    generateVariant?: (variant: string) => {
-        exitCode: number;
-        ok: boolean;
-        bytes?: Buffer;
-        reportJson: string;
-        errorCategory?: string;
-        errorCode?: string;
-        errorMessage?: string;
-    };
-    planVariant?: (variant: string) => {
-        exitCode: number;
-        ok: boolean;
-        feasible?: boolean;
-        summary?: string;
-        profile?: string;
-        reportJson: string;
-        errorCategory?: string;
-        errorCode?: string;
-        errorMessage?: string;
-    };
+    generateVariant?: (variant: string) => NativeGenerateResult;
+    generateRequestJson?: (requestJson: string) => NativeGenerateResult;
+    planVariant?: (variant: string) => NativePlanResult;
+    planRequestJson?: (requestJson: string) => NativePlanResult;
     verifyZipBytesNapi?: (bytes: Buffer) => {
         exitCode: number;
         ok: boolean;
@@ -111,6 +96,36 @@ function mapCapabilities(binding: NativeBinding): CapabilitySet | undefined {
 function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
     const caps = mapCapabilities(binding);
     return {
+        generateRequestJson: binding.generateRequestJson
+            ? (requestJson) => {
+                  const result = binding.generateRequestJson!(requestJson);
+                  return {
+                      exitCode: result.exitCode,
+                      ok: result.ok,
+                      bytes: toUint8Array(result.bytes),
+                      reportJson: result.reportJson,
+                      errorCategory: result.errorCategory,
+                      errorCode: result.errorCode,
+                      errorMessage: result.errorMessage,
+                  };
+              }
+            : undefined,
+        planRequestJson: binding.planRequestJson
+            ? (requestJson) => {
+                  const result = binding.planRequestJson!(requestJson);
+                  return {
+                      exitCode: result.exitCode,
+                      ok: result.ok,
+                      feasible: result.feasible,
+                      summary: result.summary,
+                      profile: result.profile,
+                      reportJson: result.reportJson,
+                      errorCategory: result.errorCategory,
+                      errorCode: result.errorCode,
+                      errorMessage: result.errorMessage,
+                  };
+              }
+            : undefined,
         generateVariant: binding.generateVariant
             ? (variant) => {
                   const result = binding.generateVariant!(variant);
@@ -203,37 +218,45 @@ export async function createZipBomber(): Promise<ZipBomberApi> {
 }
 
 /** Convenience: prefer native Bomb emit when the platform package is present. */
-export async function zipBomb(): Promise<Outcome<ArtifactSet>> {
+export async function zipBomb(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipBomb();
+        return await api.zipBomb(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipQuine(): Promise<Outcome<ArtifactSet>> {
+export async function zipQuine(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipQuine();
+        return await api.zipQuine(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipLoopy(): Promise<Outcome<ArtifactSet>> {
+export async function zipLoopy(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipLoopy();
+        return await api.zipLoopy(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipFractal(): Promise<Outcome<ArtifactSet>> {
+export async function zipFractal(
+    options?: Partial<GenerateRequest>,
+): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipFractal();
+        return await api.zipFractal(options);
     } finally {
         await api.dispose();
     }

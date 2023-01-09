@@ -7,7 +7,9 @@ use napi_derive::napi;
 use zb_generate::{
     capabilities, generate, list_variants, plan_generate, report_json, verify_zip_bytes,
 };
-use zb_types::{GenerateRequest, Outcome, ReportStatus, VariantKind};
+use zb_types::{
+    generate_request_from_json, GenerateRequest, Outcome, ReportStatus, VariantKind,
+};
 
 /// N-API generate response.
 #[napi(object)]
@@ -118,12 +120,7 @@ pub struct VerifyResponse {
     pub error_message: Option<String>,
 }
 
-/// Plan a bare variant without emitting bytes.
-#[napi]
-pub fn plan_variant(variant: String) -> Result<PlanResponse> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
-    let request = GenerateRequest::bare(kind);
+fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
     match plan_generate(request) {
         Outcome::Ok { value, report, .. } => {
             let report_json =
@@ -163,43 +160,7 @@ pub fn plan_variant(variant: String) -> Result<PlanResponse> {
     }
 }
 
-/// Independently verify raw ZIP archive bytes through Acorn.
-#[napi]
-pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
-    match verify_zip_bytes(bytes.as_ref()) {
-        Ok(report) => {
-            let report_json = serde_json::to_string_pretty(&report)
-                .map_err(|err| Error::from_reason(err.to_string()))?;
-            Ok(VerifyResponse {
-                exit_code: if report.ok { 0 } else { 1 },
-                ok: report.ok,
-                report_json,
-                error_category: None,
-                error_code: None,
-                error_message: None,
-            })
-        }
-        Err(error) => Ok(VerifyResponse {
-            exit_code: match error.code {
-                zb_types::ErrorCode::NotImplemented
-                | zb_types::ErrorCode::VerificationCapabilityMissing => 2,
-                _ => 1,
-            },
-            ok: false,
-            report_json: "{}".to_string(),
-            error_category: Some(error.category.as_str().to_string()),
-            error_code: Some(error.code.as_str().to_string()),
-            error_message: Some(error.message),
-        }),
-    }
-}
-
-/// Generate an archive for a lowercase variant id using a bare default topology.
-#[napi]
-pub fn generate_variant(variant: String) -> Result<GenerateResponse> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
-    let request = GenerateRequest::bare(kind);
+fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
     match generate(request) {
         Outcome::Ok { value, report, .. } => {
             let report_json =
@@ -245,4 +206,67 @@ pub fn generate_variant(variant: String) -> Result<GenerateResponse> {
             })
         }
     }
+}
+
+/// Plan a bare variant without emitting bytes.
+#[napi]
+pub fn plan_variant(variant: String) -> Result<PlanResponse> {
+    let kind = VariantKind::parse(&variant)
+        .ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
+    plan_response(GenerateRequest::bare(kind))
+}
+
+/// Plan from a full `zb.request/v2` JSON wire document.
+#[napi]
+pub fn plan_request_json(request_json: String) -> Result<PlanResponse> {
+    let request = generate_request_from_json(&request_json)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+    plan_response(request)
+}
+
+/// Independently verify raw ZIP archive bytes through Acorn.
+#[napi]
+pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
+    match verify_zip_bytes(bytes.as_ref()) {
+        Ok(report) => {
+            let report_json = serde_json::to_string_pretty(&report)
+                .map_err(|err| Error::from_reason(err.to_string()))?;
+            Ok(VerifyResponse {
+                exit_code: if report.ok { 0 } else { 1 },
+                ok: report.ok,
+                report_json,
+                error_category: None,
+                error_code: None,
+                error_message: None,
+            })
+        }
+        Err(error) => Ok(VerifyResponse {
+            exit_code: match error.code {
+                zb_types::ErrorCode::NotImplemented
+                | zb_types::ErrorCode::VerificationCapabilityMissing => 2,
+                _ => 1,
+            },
+            ok: false,
+            report_json: "{}".to_string(),
+            error_category: Some(error.category.as_str().to_string()),
+            error_code: Some(error.code.as_str().to_string()),
+            error_message: Some(error.message),
+        }),
+    }
+}
+
+/// Generate an archive for a lowercase variant id using a bare default topology.
+#[napi]
+pub fn generate_variant(variant: String) -> Result<GenerateResponse> {
+    let kind = VariantKind::parse(&variant)
+        .ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
+    generate_response(GenerateRequest::bare(kind))
+}
+
+/// Generate from a full `zb.request/v2` JSON wire document.
+#[napi]
+pub fn generate_request_json(request_json: String) -> Result<GenerateResponse> {
+    let request = generate_request_from_json(&request_json)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+    generate_response(request)
 }
