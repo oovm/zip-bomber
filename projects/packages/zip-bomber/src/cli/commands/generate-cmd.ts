@@ -1,67 +1,53 @@
-import { writeFileSync } from "node:fs";
-
+import { writeFile } from "node:fs/promises";
 import type { Cli, ParsedOptions } from "@vmz/commander";
-
-import {
-    loadZipBomberNode,
-    zipBomb,
-    zipFractal,
-    zipLoopy,
-    zipQuine,
-} from "../../node/load.js";
-import { VARIANTS, type VariantId } from "../../types.js";
+import { createZipBomber } from "../../node/index.js";
+import { InputError, readRequest, requestOptions } from "../request.js";
+import { inputFailure, translator } from "../locale.js";
 
 export function registerGenerateCommand(cli: Cli): void {
-    cli.command("generate", "zb.cli.cmd.generate")
+    requestOptions(cli.command("generate", "zb.cli.cmd.generate")
         .option("-v, --variant <id>", "zb.cli.opt.variant")
-        .option("-o, --output <path>", "zb.cli.opt.output")
-        .action((options) => runGenerate(options));
+        .option("-o, --output <path>", "zb.cli.opt.output"))
+        .action(runGenerate);
 }
 
-async function runShared(variant: VariantId) {
-    switch (variant) {
-        case "bomb":
-            return zipBomb();
-        case "quine":
-            return zipQuine();
-        case "loopy":
-            return zipLoopy();
-        case "fractal":
-            return zipFractal();
-    }
-}
-
-/** Generate a variant archive through the Node API / native binding. */
+/** Generate through the public Node API, preserving all request fields. */
 export async function runGenerate(options: ParsedOptions): Promise<number> {
-    const variant = typeof options.variant === "string" ? options.variant : undefined;
-    const output = typeof options.output === "string" ? options.output : undefined;
-    if (!variant || !output) {
-        console.error("generate requires --variant and --output");
-        return 1;
-    }
-    if (!VARIANTS.includes(variant as VariantId)) {
-        console.error(`unknown variant: ${variant}`);
-        console.error(`expected one of: ${VARIANTS.join(", ")}`);
-        return 1;
-    }
-
-    const node = loadZipBomberNode();
-    if (node.generateVariant) {
-        const result = node.generateVariant(variant);
-        console.log(result.reportJson);
-        if (result.bytes && result.bytes.length > 0) {
-            writeFileSync(output, result.bytes);
-            console.error(`wrote ${output} (${result.bytes.length} bytes)`);
+    try {
+        if (typeof options.output !== "string" || !options.output) {
+            throw new InputError("zb.cli.err.output");
         }
-        return result.exitCode;
+        const request = await readRequest(options);
+        const api = await createZipBomber();
+        try {
+            const outcome = await api.generate(request);
+            if (!outcome.ok) {
+                console.log(JSON.stringify(outcome));
+                return 2;
+            }
+            const artifact = outcome.value.artifacts.find(a => a.id === outcome.value.root);
+            if (!artifact || outcome.value.artifacts.length !== 1) {
+                throw new InputError("zb.cli.err.singleArtifact");
+            }
+            // Do not overwrite an existing output or an attachment source.
+            await writeFile(options.output, artifact.bytes, { flag: "wx" });
+            console.log(JSON.stringify({
+                ok: true,
+                value: {
+                    root: outcome.value.root,
+                    artifacts: [{ id: artifact.id, byteLength: artifact.byteLength, digest: artifact.digest }],
+                    logicalNodeMap: outcome.value.logicalNodeMap,
+                },
+                report: outcome.report,
+            }));
+            console.error(translator(options)("zb.cli.result.wrote", {
+                path: options.output, bytes: artifact.byteLength,
+            }));
+            return 0;
+        } finally {
+            await api.dispose();
+        }
+    } catch (error) {
+        return inputFailure(error, options);
     }
-
-    const outcome = await runShared(variant as VariantId);
-    console.log(JSON.stringify(outcome, null, 2));
-    if (outcome.ok && outcome.value.artifacts[0]?.bytes.length) {
-        writeFileSync(output, outcome.value.artifacts[0].bytes);
-        console.error(`wrote ${output}`);
-        return 0;
-    }
-    return 2;
 }

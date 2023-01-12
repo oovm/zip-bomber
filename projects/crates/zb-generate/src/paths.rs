@@ -18,11 +18,7 @@ pub fn validate_member_path(path: &str, allow_directory: bool) -> ZbResult<()> {
             format!("member path `{path}` exceeds ZIP16 name length"),
         ));
     }
-    if path.starts_with('/')
-        || path.contains('\\')
-        || path.contains('\0')
-        || path.contains(':')
-    {
+    if path.starts_with('/') || path.contains('\\') || path.contains('\0') || path.contains(':') {
         return Err(ZbError::new(
             ErrorCode::InvalidTopology,
             format!("member path `{path}` must be a relative normalized POSIX path"),
@@ -35,7 +31,7 @@ pub fn validate_member_path(path: &str, allow_directory: bool) -> ZbResult<()> {
             format!("member path `{path}` cannot be a directory entry here"),
         ));
     }
-    let trimmed = path.trim_end_matches('/');
+    let trimmed = path.strip_suffix('/').unwrap_or(path);
     if trimmed.is_empty() {
         return Err(ZbError::new(
             ErrorCode::InvalidTopology,
@@ -57,28 +53,25 @@ pub fn validate_member_path(path: &str, allow_directory: bool) -> ZbResult<()> {
 /// Validate Quine self path plus ordinary payload / directory paths.
 pub fn validate_quine_members(self_path: &str, payloads: &[PayloadSpec]) -> ZbResult<()> {
     validate_member_path(self_path, false)?;
-    let mut seen = vec![normalize_key(self_path)];
+    let mut seen = vec![(normalize_key(self_path), false)];
     for payload in payloads {
         let is_dir = payload.path.ends_with('/');
         validate_member_path(&payload.path, is_dir)?;
         if is_dir && !payload.bytes.is_empty() {
             return Err(ZbError::new(
                 ErrorCode::InvalidTopology,
-                format!(
-                    "directory payload `{}` must have empty bytes",
-                    payload.path
-                ),
+                format!("directory payload `{}` must have empty bytes", payload.path),
             ));
         }
         let key = normalize_key(&payload.path);
-        if seen.iter().any(|s| s == &key) {
+        if seen.iter().any(|(s, _)| s == &key) {
             return Err(ZbError::new(
                 ErrorCode::InvalidTopology,
                 format!("duplicate member path `{}`", payload.path),
             ));
         }
-        for existing in &seen {
-            if paths_conflict(existing, &key) {
+        for (existing, existing_is_dir) in &seen {
+            if paths_conflict(existing, *existing_is_dir, &key, is_dir) {
                 return Err(ZbError::new(
                     ErrorCode::InvalidTopology,
                     format!(
@@ -88,7 +81,7 @@ pub fn validate_quine_members(self_path: &str, payloads: &[PayloadSpec]) -> ZbRe
                 ));
             }
         }
-        seen.push(key);
+        seen.push((key, is_dir));
     }
     Ok(())
 }
@@ -97,10 +90,16 @@ fn normalize_key(path: &str) -> String {
     path.trim_end_matches('/').to_string()
 }
 
-fn paths_conflict(a: &str, b: &str) -> bool {
+fn paths_conflict(a: &str, a_is_dir: bool, b: &str, b_is_dir: bool) -> bool {
     if a == b {
         return true;
     }
-    let (shorter, longer) = if a.len() <= b.len() { (a, b) } else { (b, a) };
-    longer.starts_with(shorter) && longer.as_bytes().get(shorter.len()) == Some(&b'/')
+    let (shorter, longer, shorter_is_dir) = if a.len() <= b.len() {
+        (a, b, a_is_dir)
+    } else {
+        (b, a, b_is_dir)
+    };
+    !shorter_is_dir
+        && longer.starts_with(shorter)
+        && longer.as_bytes().get(shorter.len()) == Some(&b'/')
 }

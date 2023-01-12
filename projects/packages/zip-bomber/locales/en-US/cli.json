@@ -9,5 +9,19 @@
     "zb.cli.opt.variant": "Variant id: bomb, quine, loopy, or fractal",
     "zb.cli.opt.output": "Output archive path",
     "zb.cli.opt.input": "Input archive path to verify",
-    "zb.cli.opt.locale": "CLI locale (BCP-47)"
+    "zb.cli.opt.locale": "CLI locale (BCP-47)",
+    "zb.cli.opt.quineName": "Self-reference member path inside the archive",
+    "zb.cli.opt.attach": "Attach a regular file as archivePath=sourcePath (repeatable)",
+    "zb.cli.opt.directory": "Add an explicit empty directory entry (repeatable)",
+    "zb.cli.err.regularFile": "Attachment must be a regular file, not a symbolic link: {path}",
+    "zb.cli.err.fileChanged": "Attachment changed while reading: {path}",
+    "zb.cli.err.inputBudget": "Attachment snapshots exceed the 8 MiB input budget",
+    "zb.cli.err.positionals": "Unexpected positional arguments",
+    "zb.cli.err.variant": "Specify --variant bomb, quine, loopy, or fractal",
+    "zb.cli.err.quineOnly": "Attachment and self-name options require --variant quine",
+    "zb.cli.err.mapping": "Invalid attachment mapping, expected archivePath=sourcePath: {mapping}",
+    "zb.cli.err.output": "Generate requires --output",
+    "zb.cli.err.singleArtifact": "This output mode requires exactly one root artifact",
+    "zb.cli.err.hostIo": "Host I/O failed: {message}",
+    "zb.cli.result.wrote": "Wrote {path} ({bytes} bytes)"
 }

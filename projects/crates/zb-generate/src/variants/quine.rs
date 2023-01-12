@@ -75,15 +75,29 @@ pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
 
 /// Compress ordinary payloads and report layout budgets without emitting CRC.
 pub fn plan_layout(request: &GenerateRequest) -> ZbResult<QuineLayoutPlan> {
+    prepare_layout(request).map(|(layout, _)| layout)
+}
+
+fn prepare_layout(request: &GenerateRequest) -> ZbResult<(QuineLayoutPlan, Vec<OrdinaryMember>)> {
     let self_name = self_member_path(request)?;
-    validate_quine_members(self_name, &request.payloads)?;
-    let ordinary = prepare_ordinary_members(&request.payloads, request.limits.max_input_bytes)?;
-    let member_count = ordinary.len() + 1;
-    if member_count as u32 > request.limits.max_members {
+    if request.payloads.len() + 1 > request.limits.max_members as usize {
         return Err(ZbError::resource_limited(
             "quine member count exceeds max_members",
         ));
     }
+    validate_quine_members(self_name, &request.payloads)?;
+    let input_bytes: u64 = request.payloads.iter().map(|p| p.bytes.len() as u64).sum();
+    if input_bytes > request.limits.max_input_bytes {
+        return Err(ZbError::resource_limited(
+            "quine payloads exceed max_input_bytes",
+        ));
+    }
+    if input_bytes.saturating_mul(4).saturating_add(65536) > request.limits.max_live_memory_bytes {
+        return Err(ZbError::resource_limited(
+            "quine input working set exceeds max_live_memory_bytes",
+        ));
+    }
+    let ordinary = prepare_ordinary_members(&request.payloads, request.limits.max_input_bytes)?;
     let self_name_bytes = self_name.as_bytes();
     let ordinary_local = emit_ordinary_locals(&ordinary)?;
     let ordinary_central = emit_ordinary_central(&ordinary)?;
@@ -95,15 +109,18 @@ pub fn plan_layout(request: &GenerateRequest) -> ZbResult<QuineLayoutPlan> {
         )));
     }
     let compressed_payload_bytes: u64 = ordinary.iter().map(|m| m.data.len() as u64).sum();
-    Ok(QuineLayoutPlan {
-        self_member_path: self_name.to_string(),
-        ordinary_members: ordinary.len(),
-        prefix_len,
-        suffix_len,
-        compressed_payload_bytes,
-        prefix_budget_remaining: MAX_PREFIX - prefix_len,
-        suffix_budget_remaining: MAX_SUFFIX - suffix_len,
-    })
+    Ok((
+        QuineLayoutPlan {
+            self_member_path: self_name.to_string(),
+            ordinary_members: ordinary.len(),
+            prefix_len,
+            suffix_len,
+            compressed_payload_bytes,
+            prefix_budget_remaining: MAX_PREFIX - prefix_len,
+            suffix_budget_remaining: MAX_SUFFIX - suffix_len,
+        },
+        ordinary,
+    ))
 }
 
 /// Layout estimate used by `plan` and reports.
@@ -137,12 +154,13 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
             "quine requires one node, edge, and member",
         ));
     }
-    let layout = plan_layout(request)?;
+    let (layout, ordinary) = prepare_layout(request)?;
     let self_name = layout.self_member_path.as_bytes();
-    let ordinary = prepare_ordinary_members(&request.payloads, request.limits.max_input_bytes)?;
     let ordinary_local = emit_ordinary_locals(&ordinary)?;
     let self_lfh_offset = ordinary_local.len();
-    let working_bound = (layout.prefix_len + layout.suffix_len) as u64 * 16 + 65536;
+    let input_bytes: u64 = ordinary.iter().map(|m| m.original.len() as u64).sum();
+    let working_bound =
+        (layout.prefix_len + layout.suffix_len) as u64 * 16 + input_bytes.saturating_mul(4) + 65536;
     if working_bound > request.limits.max_live_memory_bytes {
         return Err(ZbError::resource_limited(
             "quine working set exceeds max_live_memory_bytes",
@@ -184,8 +202,9 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
             "quine artifact exceeds max_artifact_bytes",
         ));
     }
+    let decoded_bytes = (archive_len as u64).saturating_add(input_bytes);
     if archive_len as u64 > request.limits.max_total_artifact_bytes
-        || archive_len as u64 > request.limits.max_decoded_bytes
+        || decoded_bytes > request.limits.max_decoded_bytes
     {
         return Err(ZbError::resource_limited(
             "quine exceeds total artifact or decode budget",
@@ -323,7 +342,7 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
         1,
         1,
         artifact.bytes.len() as u64,
-        artifact.bytes.len() as u64,
+        decoded_bytes,
         vec![
             format!("template={}", meta.id),
             format!("self_member_path={}", layout.self_member_path),
@@ -404,9 +423,12 @@ fn compress_payload(data: &[u8]) -> ZbResult<(u16, Vec<u8>)> {
         return Ok((METHOD_STORED, Vec::new()));
     }
     let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(6));
-    encoder
-        .write_all(data)
-        .map_err(|e| ZbError::new(zb_types::ErrorCode::Internal, format!("deflate failed: {e}")))?;
+    encoder.write_all(data).map_err(|e| {
+        ZbError::new(
+            zb_types::ErrorCode::Internal,
+            format!("deflate failed: {e}"),
+        )
+    })?;
     let compressed = encoder.finish().map_err(|e| {
         ZbError::new(
             zb_types::ErrorCode::Internal,
@@ -484,8 +506,7 @@ fn verify_ordinary_members(archive: &[u8], members: &[OrdinaryMember]) -> ZbResu
                     .map_err(|e| {
                         ZbError::verification_failed(format!("attachment inflate failed: {e}"))
                     })?;
-                if status != flate2::Status::StreamEnd
-                    || decoder.total_in() as usize != data.len()
+                if status != flate2::Status::StreamEnd || decoder.total_in() as usize != data.len()
                 {
                     return Err(ZbError::verification_failed(
                         "attachment decoder did not finish cleanly",

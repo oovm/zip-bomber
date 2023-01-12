@@ -1,17 +1,28 @@
 use flate2::{Decompress, FlushDecompress, Status};
 use zb_generate::{generate, plan_generate, verify_zip_bytes};
-use zb_types::{
-    GenerateRequest, Outcome, PayloadSpec, TopologyGraph, VariantKind,
-};
+use zb_types::{GenerateRequest, Outcome, PayloadSpec, TopologyGraph, VariantKind};
 
 fn inflate_member(archive: &[u8], local_offset: usize) -> Vec<u8> {
-    let method = u16::from_le_bytes(archive[local_offset + 8..local_offset + 10].try_into().unwrap());
-    let compressed = u32::from_le_bytes(archive[local_offset + 18..local_offset + 22].try_into().unwrap())
-        as usize;
-    let name_len =
-        u16::from_le_bytes(archive[local_offset + 26..local_offset + 28].try_into().unwrap()) as usize;
-    let extra =
-        u16::from_le_bytes(archive[local_offset + 28..local_offset + 30].try_into().unwrap()) as usize;
+    let method = u16::from_le_bytes(
+        archive[local_offset + 8..local_offset + 10]
+            .try_into()
+            .unwrap(),
+    );
+    let compressed = u32::from_le_bytes(
+        archive[local_offset + 18..local_offset + 22]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let name_len = u16::from_le_bytes(
+        archive[local_offset + 26..local_offset + 28]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let extra = u16::from_le_bytes(
+        archive[local_offset + 28..local_offset + 30]
+            .try_into()
+            .unwrap(),
+    ) as usize;
     let start = local_offset + 30 + name_len + extra;
     let data = &archive[start..start + compressed];
     if method == 0 {
@@ -94,6 +105,102 @@ fn quine_with_attachments_dirs_and_utf8_names() {
             assert!(value.summary.contains("recurse/again.zip"));
         }
         Outcome::Err { error, .. } => panic!("plan failed: {error}"),
+    }
+}
+
+#[test]
+fn explicit_directories_can_contain_files_in_either_order() {
+    for reverse in [false, true] {
+        let mut request = GenerateRequest::bare(VariantKind::Quine);
+        request.topology = TopologyGraph::quine_self("release.zip", "assets/again.zip");
+        request.payloads = vec![
+            PayloadSpec {
+                path: "assets/".into(),
+                bytes: vec![],
+            },
+            PayloadSpec {
+                path: "assets/nested/".into(),
+                bytes: vec![],
+            },
+            PayloadSpec {
+                path: "assets/nested/说明.txt".into(),
+                bytes: b"content".to_vec(),
+            },
+        ];
+        if reverse {
+            request.payloads.reverse();
+        }
+        match generate(request) {
+            Outcome::Ok { value, .. } => {
+                assert!(verify_zip_bytes(&value.artifacts[0].bytes).unwrap().ok)
+            }
+            Outcome::Err { error, .. } => panic!("directory descendants failed: {error}"),
+        }
+    }
+}
+
+#[test]
+fn malformed_directory_slashes_and_file_ancestors_are_rejected() {
+    for paths in [
+        vec!["assets//"],
+        vec!["assets", "assets/data.txt"],
+        vec!["a", "a/a.zip"],
+    ] {
+        let mut request = GenerateRequest::bare(VariantKind::Quine);
+        request.payloads = paths
+            .iter()
+            .map(|p| PayloadSpec {
+                path: p.to_string(),
+                bytes: vec![],
+            })
+            .collect();
+        assert!(matches!(generate(request), Outcome::Err { .. }));
+    }
+}
+
+#[test]
+fn compressed_attachments_still_consume_decode_budget() {
+    let mut request = GenerateRequest::bare(VariantKind::Quine);
+    request.payloads = vec![PayloadSpec {
+        path: "large.txt".into(),
+        bytes: vec![b'x'; 100_000],
+    }];
+    request.limits.max_decoded_bytes = 50_000;
+    match generate(request) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.category, zb_types::ErrorCategory::ResourceLimited)
+        }
+        Outcome::Ok { .. } => panic!("attachment decode bytes must count toward budget"),
+    }
+}
+
+#[test]
+fn incompressible_attachment_exceeding_window_is_rejected_by_plan_and_generate() {
+    let mut seed = 0x12345678u32;
+    let bytes: Vec<u8> = (0..40_000)
+        .map(|_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            seed as u8
+        })
+        .collect();
+    let mut request = GenerateRequest::bare(VariantKind::Quine);
+    request.payloads = vec![PayloadSpec {
+        path: "binary.dat".into(),
+        bytes,
+    }];
+    match plan_generate(request.clone()) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.category, zb_types::ErrorCategory::ResourceLimited)
+        }
+        Outcome::Ok { .. } => panic!("oversized serialized prefix must fail planning"),
+    }
+    match generate(request) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.category, zb_types::ErrorCategory::ResourceLimited)
+        }
+        Outcome::Ok { .. } => panic!("oversized serialized prefix must fail generation"),
     }
 }
 

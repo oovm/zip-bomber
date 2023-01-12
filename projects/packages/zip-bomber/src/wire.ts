@@ -49,7 +49,7 @@ export function encodeGenerateRequestJson(input: {
         container: "zip",
         variant: input.variant,
     };
-    if (input.selfMemberPath) {
+    if (input.selfMemberPath !== undefined) {
         wire.selfMemberPath = input.selfMemberPath;
     }
     if (input.topology !== undefined) {

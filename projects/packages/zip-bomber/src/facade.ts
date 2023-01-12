@@ -115,7 +115,7 @@ function mergeRequest(
 
 function requestNeedsJson(request: GenerateRequest): boolean {
     return Boolean(
-        request.selfMemberPath ||
+        request.selfMemberPath !== undefined ||
             (request.payloads && request.payloads.length > 0) ||
             request.topology !== undefined,
     );

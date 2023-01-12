@@ -1,6 +1,3 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import {
     assertCatalogCoverage,
     createCli,
@@ -13,11 +10,10 @@ import { registerGenerateCommand } from "./commands/generate-cmd.js";
 import { registerPlanCommand } from "./commands/plan-cmd.js";
 import { registerVariantsCommand } from "./commands/variants-cmd.js";
 import { registerVerifyCommand } from "./commands/verify-cmd.js";
+import { localesRoot } from "./locale.js";
 
 /** Locales root shipped with the main package. */
-export function localesRoot(): string {
-    return join(dirname(fileURLToPath(import.meta.url)), "../../locales");
-}
+export { localesRoot } from "./locale.js";
 
 /** Build the `zb` command tree (Living `09`). */
 export function buildZbCli(): Cli {

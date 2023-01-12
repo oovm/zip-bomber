@@ -9,5 +9,19 @@
     "zb.cli.opt.variant": "变体 id：bomb、quine、loopy 或 fractal",
     "zb.cli.opt.output": "输出归档路径",
     "zb.cli.opt.input": "待复验的输入归档路径",
-    "zb.cli.opt.locale": "CLI 语言（BCP-47）"
+    "zb.cli.opt.locale": "CLI 语言（BCP-47）",
+    "zb.cli.opt.quineName": "归档内的自引用成员路径",
+    "zb.cli.opt.attach": "按归档路径=源文件路径添加普通文件（可重复）",
+    "zb.cli.opt.directory": "添加显式空目录条目（可重复）",
+    "zb.cli.err.regularFile": "附件必须为普通文件，不能是符号链接：{path}",
+    "zb.cli.err.fileChanged": "附件在读取时发生变化：{path}",
+    "zb.cli.err.inputBudget": "附件快照总量超过 8 MiB 输入预算",
+    "zb.cli.err.positionals": "出现了未声明的位置参数",
+    "zb.cli.err.variant": "请指定 --variant bomb、quine、loopy 或 fractal",
+    "zb.cli.err.quineOnly": "附件和自引用名称选项要求 --variant quine",
+    "zb.cli.err.mapping": "附件映射格式错误，应为归档路径=源文件路径：{mapping}",
+    "zb.cli.err.output": "生成需要 --output",
+    "zb.cli.err.singleArtifact": "此输出模式要求恰好一个根归档",
+    "zb.cli.err.hostIo": "宿主读写失败：{message}",
+    "zb.cli.result.wrote": "已写出 {path}（{bytes} 字节）"
 }
