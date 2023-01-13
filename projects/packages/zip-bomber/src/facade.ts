@@ -1,9 +1,11 @@
+import { graphRequest, isGraphSpec } from "./builders.js";
 import {
     VARIANTS,
     type ArtifactSet,
     type CapabilitySet,
     type CapabilityStatus,
     type GenerateRequest,
+    type GraphSpec,
     type GenerateReport,
     type Outcome,
     type PlanSummary,
@@ -19,6 +21,8 @@ export type BackendGenerateResult = {
     exitCode: number;
     ok: boolean;
     bytes?: Uint8Array;
+    artifacts?: Array<{ id: string; bytes: Uint8Array; byteLength?: string; digest?: string }>;
+    logicalNodeMap?: string[];
     reportJson: string;
     errorCategory?: string;
     errorCode?: string;
@@ -101,12 +105,19 @@ function bareRequest(variant: VariantId): GenerateRequest {
 
 function mergeRequest(
     variant: VariantId,
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): GenerateRequest {
+    if (options && isGraphSpec(options)) {
+        if (options.variant !== variant) throw new TypeError("graph specification variant mismatch");
+        return graphRequest(options);
+    }
     return {
         schema: "zb.request/v2",
         container: "zip",
         variant,
+        graph: options?.graph,
+        profile: options?.profile,
+        limits: options?.limits,
         topology: options?.topology,
         selfMemberPath: options?.selfMemberPath,
         payloads: options?.payloads,
@@ -115,6 +126,7 @@ function mergeRequest(
 
 function requestNeedsJson(request: GenerateRequest): boolean {
     return Boolean(
+        request.graph !== undefined || request.profile !== undefined || request.limits !== undefined ||
         request.selfMemberPath !== undefined ||
             (request.payloads && request.payloads.length > 0) ||
             request.topology !== undefined,
@@ -124,6 +136,7 @@ function requestNeedsJson(request: GenerateRequest): boolean {
 function toWireJson(request: GenerateRequest): string {
     return encodeGenerateRequestJson({
         variant: request.variant,
+        graph: request.graph, profile: request.profile, limits: request.limits,
         selfMemberPath: request.selfMemberPath,
         payloads: request.payloads,
         topology: request.topology,
@@ -187,24 +200,12 @@ function parseReport(reportJson: string, fallback: VariantId): GenerateReport {
 function artifactSetFromRoot(
     bytes: Uint8Array | undefined,
     variant: VariantId,
+    artifacts?: BackendGenerateResult["artifacts"],
+    logicalNodeMap?: string[],
 ): ArtifactSet {
     const root = `${variant}-root`;
-    if (!bytes || bytes.length === 0) {
-        return { root, artifacts: [], logicalNodeMap: [] };
-    }
-    return {
-        root,
-        artifacts: [
-            {
-                id: root,
-                container: "zip",
-                bytes,
-                byteLength: String(bytes.length),
-                digest: "",
-            },
-        ],
-        logicalNodeMap: [`root=${root}`],
-    };
+    const full = artifacts?.length ? artifacts.map((a) => ({ id:a.id, container:"zip" as const, bytes:a.bytes, byteLength:a.byteLength ?? String(a.bytes.length), digest:a.digest ?? "" })) : (bytes && bytes.length ? [{ id:root, container:"zip" as const, bytes, byteLength:String(bytes.length), digest:"" }] : []);
+    return { root, artifacts: full, logicalNodeMap: logicalNodeMap ?? [`root=${root}`] };
 }
 
 function outcomeFromBackend(
@@ -215,7 +216,7 @@ function outcomeFromBackend(
     if (result.ok) {
         return {
             ok: true,
-            value: artifactSetFromRoot(result.bytes, variant),
+            value: artifactSetFromRoot(result.bytes, variant, result.artifacts, result.logicalNodeMap),
             report,
         };
     }
@@ -402,10 +403,10 @@ export function createSharedZipBomberApi(
             return defaultCapabilities(hasGenerate ? "implemented" : "declared");
         },
         plan(request) {
-            return guard(async () => planRequest(request));
+            return guard(async () => planRequest(isGraphSpec(request) ? graphRequest(request) : request));
         },
         generate(request) {
-            return guard(async () => runRequest(request));
+            return guard(async () => runRequest(isGraphSpec(request) ? graphRequest(request) : request));
         },
         verify(input) {
             return guard(async () => verifyBytes(input));
@@ -453,7 +454,7 @@ export async function zipQuine(
 }
 
 export async function zipLoopy(
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
@@ -464,7 +465,7 @@ export async function zipLoopy(
 }
 
 export async function zipFractal(
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {

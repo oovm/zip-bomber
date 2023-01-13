@@ -23,12 +23,6 @@ pub struct StoredMember {
 
 /// Emit a single-volume ZIP using only the store method.
 pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
-    if members.is_empty() {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            "stored archive requires at least one member",
-        ));
-    }
     if members.len() > u16::MAX as usize {
         return Err(ZbError::new(
             ErrorCode::Internal,
@@ -56,9 +50,8 @@ pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
         }
         let crc = crc32(&member.payload);
         let size = member.payload.len() as u32;
-        let local_offset = u32::try_from(local.len()).map_err(|_| {
-            ZbError::new(ErrorCode::Internal, "local header offset exceeds u32")
-        })?;
+        let local_offset = u32::try_from(local.len())
+            .map_err(|_| ZbError::new(ErrorCode::Internal, "local header offset exceeds u32"))?;
         offsets.push(local_offset);
 
         write_u32(&mut local, SIG_LFH);
@@ -90,17 +83,18 @@ pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
         write_u16(&mut central, 0); // comment
         write_u16(&mut central, 0); // disk start
         write_u16(&mut central, 0); // int attrs
-        write_u32(&mut central, 0); // ext attrs
+        write_u32(
+            &mut central,
+            if member.path.ends_with('/') { 0x10 } else { 0 },
+        ); // DOS directory
         write_u32(&mut central, local_offset);
         central.extend_from_slice(name);
     }
 
-    let cd_offset = u32::try_from(local.len()).map_err(|_| {
-        ZbError::new(ErrorCode::Internal, "central directory offset exceeds u32")
-    })?;
-    let cd_size = u32::try_from(central.len()).map_err(|_| {
-        ZbError::new(ErrorCode::Internal, "central directory size exceeds u32")
-    })?;
+    let cd_offset = u32::try_from(local.len())
+        .map_err(|_| ZbError::new(ErrorCode::Internal, "central directory offset exceeds u32"))?;
+    let cd_size = u32::try_from(central.len())
+        .map_err(|_| ZbError::new(ErrorCode::Internal, "central directory size exceeds u32"))?;
     let count = members.len() as u16;
 
     let mut out = local;

@@ -93,11 +93,14 @@ fn generate_payload(request: GenerateRequest) -> Result<String, JsValue> {
         Outcome::Ok { value, report, .. } => {
             let report = report_json(&report).map_err(|err| JsValue::from_str(&err.to_string()))?;
             let bytes = root_bytes(&value);
+            let artifacts = value.artifacts.iter().map(|a| serde_json::json!({"id":a.id.0,"bytesBase64":bytes_to_b64(&a.bytes),"byteLength":a.bytes.len(),"digest":a.digest})).collect::<Vec<_>>();
             serde_json::json!({
                 "ok": true,
                 "bytesBase64": bytes_to_b64(&bytes),
                 "byteLength": bytes.len(),
                 "root": value.root.0,
+                "artifacts": artifacts,
+                "logicalNodeMap": value.logical_node_map,
                 "report": serde_json::from_str::<serde_json::Value>(&report).unwrap_or(serde_json::Value::Null)
             })
         }
@@ -134,8 +137,7 @@ pub fn plan_request_json(request_json: String) -> Result<String, JsValue> {
 }
 
 fn b64_to_bytes(b64: &str) -> Result<Vec<u8>, JsValue> {
-    const TABLE: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut values = Vec::with_capacity(b64.len());
     for ch in b64.bytes() {
         if ch == b'=' {

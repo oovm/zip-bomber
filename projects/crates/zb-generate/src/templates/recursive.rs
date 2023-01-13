@@ -16,7 +16,7 @@ pub(crate) struct RecursiveStream {
     pub length_candidates: u32,
 }
 
-fn header(length: usize, final_block: bool) -> ZbResult<Vec<u8>> {
+pub(crate) fn header(length: usize, final_block: bool) -> ZbResult<Vec<u8>> {
     let length = u16::try_from(length)
         .map_err(|_| ZbError::resource_limited("quoted stored block exceeds ZIP16 length"))?;
     let mut bytes = vec![u8::from(final_block)];
@@ -25,7 +25,7 @@ fn header(length: usize, final_block: bool) -> ZbResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn stored(payload: &[u8]) -> ZbResult<Vec<u8>> {
+pub(crate) fn stored(payload: &[u8]) -> ZbResult<Vec<u8>> {
     let mut bytes = header(payload.len(), false)?;
     bytes.extend_from_slice(payload);
     Ok(bytes)
@@ -49,7 +49,7 @@ fn repeat_ops(length: usize) -> ZbResult<Vec<FixedOp>> {
 /// A five-byte repeat fragment may borrow up to five trailing EOB zero bits
 /// from the first byte of the following non-final stored header. Nothing is
 /// silently padded between ordinary fixed blocks.
-fn five_byte_repeat(length: usize) -> ZbResult<Option<Vec<u8>>> {
+pub(crate) fn five_byte_repeat(length: usize) -> ZbResult<Option<Vec<u8>>> {
     if !(6..=516).contains(&length) {
         return Ok(None);
     }
@@ -82,7 +82,7 @@ fn five_byte_repeat(length: usize) -> ZbResult<Option<Vec<u8>>> {
     Ok(None)
 }
 
-fn aligned_repeat(length: usize) -> ZbResult<Vec<u8>> {
+pub(crate) fn aligned_repeat(length: usize) -> ZbResult<Vec<u8>> {
     if let Some(bytes) = five_byte_repeat(length)? {
         return Ok(bytes);
     }

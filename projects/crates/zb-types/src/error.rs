@@ -79,6 +79,10 @@ pub enum ErrorCode {
     UnknownVariant,
     /// Topology violates the variant contract.
     InvalidTopology,
+    /// No registered constructor for this graph shape.
+    UnsupportedTopology,
+    /// Minimum byte period differs from the declared cycle.
+    PeriodMismatch,
     /// Profile id is unknown or mismatched.
     UnsupportedProfile,
     /// Verifier lacks required Acorn / decoder facts.
@@ -101,6 +105,8 @@ impl ErrorCode {
         match self {
             Self::UnknownVariant => "ZB_UNKNOWN_VARIANT",
             Self::InvalidTopology => "ZB_INVALID_TOPOLOGY",
+            Self::UnsupportedTopology => "ZB_UNSUPPORTED_TOPOLOGY",
+            Self::PeriodMismatch => "ZB_PERIOD_MISMATCH",
             Self::UnsupportedProfile => "ZB_UNSUPPORTED_PROFILE",
             Self::VerificationCapabilityMissing => "ZB_VERIFICATION_CAPABILITY_MISSING",
             Self::ResourceLimited => "ZB_RESOURCE_LIMITED",
@@ -116,6 +122,8 @@ impl ErrorCode {
         match self {
             Self::UnknownVariant => ErrorCategory::UnsupportedVariant,
             Self::InvalidTopology => ErrorCategory::InvalidRequest,
+            Self::UnsupportedTopology => ErrorCategory::UnsupportedTopology,
+            Self::PeriodMismatch => ErrorCategory::PeriodMismatch,
             Self::UnsupportedProfile => ErrorCategory::UnsupportedProfile,
             Self::VerificationCapabilityMissing => ErrorCategory::VerificationCapabilityMissing,
             Self::ResourceLimited => ErrorCategory::ResourceLimited,

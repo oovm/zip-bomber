@@ -13,3 +13,5 @@ pub use lz_quine::{cox_core_program, interpret as interpret_lz_quine, is_self_re
 pub use quine::{list_quine_templates, QuineTemplateMeta};
 pub(crate) mod recursive;
 pub(crate) use recursive::encode_recursive_stream;
+
+pub(crate) mod loopy;

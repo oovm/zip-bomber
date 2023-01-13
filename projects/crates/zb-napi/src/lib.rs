@@ -7,9 +7,20 @@ use napi_derive::napi;
 use zb_generate::{
     capabilities, generate, list_variants, plan_generate, report_json, verify_zip_bytes,
 };
-use zb_types::{
-    generate_request_from_json, GenerateRequest, Outcome, ReportStatus, VariantKind,
-};
+use zb_types::{generate_request_from_json, GenerateRequest, Outcome, ReportStatus, VariantKind};
+
+/// N-API generate response.
+#[napi(object)]
+pub struct ArtifactResponse {
+    /// Stable logical artifact id.
+    pub id: String,
+    /// Archive bytes.
+    pub bytes: Buffer,
+    /// Decimal byte length.
+    pub byte_length: String,
+    /// Content digest.
+    pub digest: String,
+}
 
 /// N-API generate response.
 #[napi(object)]
@@ -20,6 +31,10 @@ pub struct GenerateResponse {
     pub ok: bool,
     /// Root archive bytes when present.
     pub bytes: Option<Buffer>,
+    /// All emitted logical artifacts.
+    pub artifacts: Vec<ArtifactResponse>,
+    /// Logical node mapping entries.
+    pub logical_node_map: Vec<String>,
     /// Serialized report JSON.
     pub report_json: String,
     /// Stable error category when failed.
@@ -170,6 +185,16 @@ fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
                 ReportStatus::NotImplemented => 2,
                 ReportStatus::Error => 1,
             };
+            let artifacts = value
+                .artifacts
+                .iter()
+                .map(|a| ArtifactResponse {
+                    id: a.id.0.clone(),
+                    bytes: Buffer::from(a.bytes.clone()),
+                    byte_length: a.byte_length.clone(),
+                    digest: a.digest.clone(),
+                })
+                .collect();
             let bytes = value
                 .artifacts
                 .iter()
@@ -181,6 +206,8 @@ fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
                 exit_code,
                 ok: true,
                 bytes,
+                artifacts,
+                logical_node_map: value.logical_node_map,
                 report_json,
                 error_category: None,
                 error_code: None,
@@ -199,6 +226,8 @@ fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
                 exit_code,
                 ok: false,
                 bytes: None,
+                artifacts: Vec::new(),
+                logical_node_map: Vec::new(),
                 report_json,
                 error_category: Some(error.category.as_str().to_string()),
                 error_code: Some(error.code.as_str().to_string()),

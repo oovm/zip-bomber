@@ -7,6 +7,7 @@ import {
     type ArtifactSet,
     type CapabilitySet,
     type GenerateRequest,
+    type GraphSpec,
     type Outcome,
     type VariantId,
     type ZipBomberApi,
@@ -103,6 +104,8 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                   const raw = JSON.parse(generateRequestJson(requestJson)) as {
                       ok: boolean;
                       bytesBase64?: string;
+                      artifacts?: Array<{id:string;bytesBase64:string;byteLength?:number;digest?:string}>;
+                      logicalNodeMap?: string[];
                       report?: unknown;
                       error?: {
                           category?: string;
@@ -114,6 +117,8 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                       exitCode: raw.ok ? 0 : 2,
                       ok: raw.ok,
                       bytes: raw.bytesBase64 ? b64ToBytes(raw.bytesBase64) : undefined,
+                      artifacts: raw.artifacts?.map(a=>({id:a.id,bytes:b64ToBytes(a.bytesBase64),byteLength:String(a.byteLength ?? 0),digest:a.digest ?? ""})),
+                      logicalNodeMap: raw.logicalNodeMap,
                       reportJson: JSON.stringify(raw.report ?? {}),
                       errorCategory: raw.error?.category,
                       errorCode: raw.error?.code,
@@ -232,7 +237,7 @@ export async function zipQuine(
 }
 
 export async function zipLoopy(
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
@@ -243,7 +248,7 @@ export async function zipLoopy(
 }
 
 export async function zipFractal(
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {

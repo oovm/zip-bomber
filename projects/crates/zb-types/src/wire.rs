@@ -69,6 +69,9 @@ pub struct WireGenerateRequest {
     pub container: String,
     /// Variant id.
     pub variant: String,
+    /// Ordered archive-state graph from staged builders.
+    #[serde(default)]
+    pub graph: Option<crate::ArchiveGraphSpec>,
     /// Optional topology. When omitted, bare defaults are used.
     #[serde(default)]
     pub topology: Option<WireTopologyGraph>,
@@ -141,6 +144,7 @@ impl WireGenerateRequest {
         }
 
         let mut request = GenerateRequest::bare(variant);
+        request.graph = self.graph;
         request.profile = self.profile;
         if let Some(limits) = self.limits {
             request.limits = limits;
@@ -322,6 +326,7 @@ pub fn generate_request_to_json(request: &GenerateRequest) -> ZbResult<String> {
                 .collect(),
             alignment: Some(request.topology.alignment.clone()),
         }),
+        graph: request.graph.clone(),
         self_member_path: None,
         payloads: request
             .payloads

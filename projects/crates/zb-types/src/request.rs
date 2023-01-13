@@ -89,6 +89,9 @@ pub struct GenerateRequest {
     pub container: ContainerKind,
     /// Variant driver to run.
     pub variant: VariantKind,
+    /// Ordered state graph used by staged builders.
+    #[serde(default)]
+    pub graph: Option<crate::ArchiveGraphSpec>,
     /// Include / cycle topology.
     pub topology: TopologyGraph,
     /// Optional payload slots.
@@ -122,6 +125,7 @@ impl GenerateRequest {
             schema: REQUEST_SCHEMA_V2.to_string(),
             container: ContainerKind::Zip,
             variant,
+            graph: None,
             topology,
             payloads: Vec::new(),
             fractal,

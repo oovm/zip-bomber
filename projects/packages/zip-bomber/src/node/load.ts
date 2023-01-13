@@ -7,6 +7,7 @@ import {
     VARIANTS,
     type CapabilitySet,
     type GenerateRequest,
+    type GraphSpec,
     type Outcome,
     type ArtifactSet,
     type VariantId,
@@ -18,6 +19,8 @@ export type NativeGenerateResult = {
     exitCode: number;
     ok: boolean;
     bytes?: Buffer;
+    artifacts?: Array<{id:string; bytes:Buffer; byteLength?:string; digest?:string}>;
+    logicalNodeMap?: string[];
     reportJson: string;
     errorCategory?: string;
     errorCode?: string;
@@ -103,6 +106,8 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                       exitCode: result.exitCode,
                       ok: result.ok,
                       bytes: toUint8Array(result.bytes),
+                      artifacts: result.artifacts?.map(a=>({id:a.id,bytes:toUint8Array(a.bytes)!,byteLength:a.byteLength,digest:a.digest})),
+                      logicalNodeMap: result.logicalNodeMap,
                       reportJson: result.reportJson,
                       errorCategory: result.errorCategory,
                       errorCode: result.errorCode,
@@ -241,7 +246,7 @@ export async function zipQuine(
 }
 
 export async function zipLoopy(
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
@@ -252,7 +257,7 @@ export async function zipLoopy(
 }
 
 export async function zipFractal(
-    options?: Partial<GenerateRequest>,
+    options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {

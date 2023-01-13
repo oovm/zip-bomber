@@ -68,6 +68,7 @@ impl ZipProfile {
 
 /// Execution budgets from Living `04` (finite non-negative; no Infinity).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GenerateLimits {
     /// Max topology nodes.
     pub max_nodes: u32,

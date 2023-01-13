@@ -27,3 +27,7 @@ export type { BackendGenerateResult, ZipBomberBackendHooks } from "./facade.js";
 export type { ZipBomberApiFactory, ZipBomberBackend } from "./api.js";
 export { notImplementedError, runtimeDisposedError } from "./errors.js";
 export { encodeBase64, encodeGenerateRequestJson, toUint8Array } from "./wire.js";
+
+export { createZipLoopy, createZipFractal } from "./builders.js";
+export type { ZipLoopySpec, ZipFractalSpec, ZipLoopyBuilder, ZipFractalBuilder, LoopyNode, FractalNode,
+    BuildOptions, BuildOutcome, BuildDiagnostic, NodeOptions, ArchiveLink, GenerateLimits } from "./types.js";

@@ -5,7 +5,9 @@
 mod crc;
 mod deflate;
 mod emit;
+mod graph;
 mod layout;
+mod loop_zip;
 mod paths;
 mod templates;
 mod validate;
@@ -66,6 +68,9 @@ pub struct PlanSummary {
 
 /// Plan generation without emitting bytes.
 pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
+    if request.graph.is_some() {
+        return graph::plan(request);
+    }
     let variant = request.variant;
     let crc = request.crc_strategy;
     let nodes = request.topology.nodes.len();
@@ -170,6 +175,9 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
 ///
 /// Template builds return an [`Outcome`] with `not_implemented` after topology validation.
 pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
+    if request.graph.is_some() {
+        return graph::generate(request);
+    }
     if let Err(err) = validate::normalize(&request) {
         let report = GenerateReport::not_implemented(
             request.variant,

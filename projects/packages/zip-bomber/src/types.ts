@@ -96,6 +96,9 @@ export type GenerateRequest = {
     schema: "zb.request/v2";
     container: ContainerId;
     variant: VariantId;
+    graph?: unknown;
+    profile?: string;
+    limits?: Partial<GenerateLimits>;
     /** Opaque topology object for template stubs. */
     topology?: unknown;
     /** Quine self-reference member path. Maps onto the sole self-loop edge. */
@@ -120,15 +123,54 @@ export type VerifySummary = {
 
 export type ZipBomberApi = {
     capabilities(): Promise<CapabilitySet>;
-    plan(request: GenerateRequest): Promise<Outcome<PlanSummary>>;
-    generate(request: GenerateRequest): Promise<Outcome<ArtifactSet>>;
+    plan(request: GenerateRequest | GraphSpec): Promise<Outcome<PlanSummary>>;
+    generate(request: GenerateRequest | GraphSpec): Promise<Outcome<ArtifactSet>>;
     verify(
         input: ArtifactSet,
         spec?: unknown,
     ): Promise<Outcome<VerifySummary>>;
     zipBomb(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
     zipQuine(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
-    zipLoopy(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
-    zipFractal(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
+    zipLoopy(options?: Partial<GenerateRequest> | ZipLoopySpec): Promise<Outcome<ArtifactSet>>;
+    zipFractal(options?: Partial<GenerateRequest> | ZipFractalSpec): Promise<Outcome<ArtifactSet>>;
     dispose(): Promise<void>;
 };
+
+/** Graph-local staged builder diagnostic. */
+export type BuildDiagnostic = { code: string; message: string; node?: number; archivePath?: string };
+export type BuildOutcome<T> = { ok: true; value: T; diagnostics: BuildDiagnostic[] } |
+    { ok: false; error: ZbError; diagnostics: BuildDiagnostic[] };
+export type GenerateLimits = {
+    max_nodes: number; max_edges: number; max_members: number;
+    max_input_bytes: number; max_artifact_bytes: number; max_total_artifact_bytes: number;
+    max_decoded_bytes: number; max_depth: number; max_template_candidates: number;
+    max_constraint_bits: number; max_solver_operations: number; max_live_memory_bytes: number;
+};
+export type BuildOptions = { profile?: string; limits?: Partial<GenerateLimits> };
+declare const graphSpecBrand: unique symbol;
+export type ZipLoopySpec = { readonly variant: "loopy"; readonly [graphSpecBrand]: true };
+export type ZipFractalSpec = { readonly variant: "fractal"; readonly [graphSpecBrand]: true };
+export type GraphSpec = ZipLoopySpec | ZipFractalSpec;
+export type NodeOptions = { label?: string; payloads?: readonly PayloadSpec[] };
+export type ArchiveLink<N> = { archivePath: string; to: N; role?: string };
+export interface LoopyNode {
+    attach(payload: PayloadSpec): this;
+    directory(archivePath: string): this;
+    link(edge: ArchiveLink<LoopyNode>): this;
+}
+export interface FractalNode {
+    attach(payload: PayloadSpec): this;
+    directory(archivePath: string): this;
+    link(edge: ArchiveLink<FractalNode>): this;
+    terminal(options: { payloads: readonly PayloadSpec[] }): this;
+}
+export interface ZipLoopyBuilder {
+    node(options?: NodeOptions): LoopyNode;
+    root(node: LoopyNode): this;
+    build(options?: BuildOptions): BuildOutcome<ZipLoopySpec>;
+}
+export interface ZipFractalBuilder {
+    node(options?: NodeOptions): FractalNode;
+    root(node: FractalNode): this;
+    build(options: BuildOptions & ({mode: "recursive"} | {mode: "finite"; depth: DecimalU64})): BuildOutcome<ZipFractalSpec>;
+}

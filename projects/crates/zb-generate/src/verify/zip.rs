@@ -108,11 +108,10 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
     }
 
     let owned = bytes.to_vec();
-    let index = index_zip_bytes("zb-verify.zip", owned.clone()).map_err(|err| {
-        ZbError::verification_failed(format!("Acorn ZIP index failed: {err}"))
-    })?;
+    let index = index_zip_bytes("zb-verify.zip", owned.clone())
+        .map_err(|err| ZbError::verification_failed(format!("Acorn ZIP index failed: {err}")))?;
 
-    if index.members.is_empty() {
+    if index.members.is_empty() && !is_empty_zip(bytes) {
         return Err(ZbError::verification_failed(
             "Acorn ZIP index returned no members",
         ));
@@ -146,7 +145,10 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
     }
 
     if !acorn.format_status_query {
-        notes.push("format_status_query unavailable (trailing-data / data-descriptor not asserted)".to_string());
+        notes.push(
+            "format_status_query unavailable (trailing-data / data-descriptor not asserted)"
+                .to_string(),
+        );
     }
 
     Ok(VerificationReport {
@@ -171,4 +173,10 @@ pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
             "artifact set has no root bytes to verify",
         )),
     }
+}
+
+fn is_empty_zip(bytes: &[u8]) -> bool {
+    bytes.len() == 22
+        && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06]
+        && bytes[8..22].iter().all(|b| *b == 0)
 }

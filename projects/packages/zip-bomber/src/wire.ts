@@ -35,6 +35,9 @@ export type WireGenerateRequest = {
     selfMemberPath?: string;
     payloads?: WirePayload[];
     topology?: unknown;
+    graph?: unknown;
+    profile?: string;
+    limits?: unknown;
 };
 
 /** Build a `zb.request/v2` JSON document with base64 payload bytes. */
@@ -43,12 +46,16 @@ export function encodeGenerateRequestJson(input: {
     selfMemberPath?: string;
     payloads?: Array<{ archivePath: string; bytes?: Uint8Array }>;
     topology?: unknown;
+    graph?: unknown;
+    profile?: string;
+    limits?: unknown;
 }): string {
     const wire: WireGenerateRequest = {
         schema: "zb.request/v2",
         container: "zip",
         variant: input.variant,
     };
+    wire.graph = input.graph; wire.profile = input.profile; wire.limits = input.limits;
     if (input.selfMemberPath !== undefined) {
         wire.selfMemberPath = input.selfMemberPath;
     }
