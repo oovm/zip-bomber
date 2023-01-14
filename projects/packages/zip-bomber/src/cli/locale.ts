@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLocalizeFromLocales, type ParsedOptions } from "@vmz/commander";
-import { InputError } from "./request.js";
+import { InputError } from "./errors.js";
 
 export function localesRoot(): string {
     return join(dirname(fileURLToPath(import.meta.url)), "../../locales");

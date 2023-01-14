@@ -1,17 +1,17 @@
-import { open, lstat } from "node:fs/promises";
 import type { Command, ParsedOptions } from "@vmz/commander";
 import { VARIANTS, type GenerateRequest, type PayloadSpec, type VariantId } from "../types.js";
+import { InputError } from "./errors.js";
+import { snapshotFile } from "./io.js";
+import { loadJob, type ResolvedJob } from "./job.js";
+
+export { InputError } from "./errors.js";
+export { snapshotFile } from "./io.js";
 
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 
-export class InputError extends Error {
-    constructor(public readonly messageId: string, public readonly args: Record<string, string> = {}) {
-        super(messageId);
-    }
-}
-
 export function requestOptions(command: Command): Command {
     return command
+        .option("--request <path>", "zb.cli.opt.request")
         .option("--quine-name <path>", "zb.cli.opt.quineName")
         .option("--attach <archivePath=sourcePath>...", "zb.cli.opt.attach")
         .option("--directory <path>...", "zb.cli.opt.directory");
@@ -22,39 +22,28 @@ function list(options: ParsedOptions, key: string): string[] {
     return Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
 }
 
-/** Read one bounded snapshot. No filesystem path reaches the core request. */
-async function snapshot(source: string, remaining: number): Promise<Uint8Array> {
-    const entry = await lstat(source);
-    if (!entry.isFile() || entry.isSymbolicLink()) {
-        throw new InputError("zb.cli.err.regularFile", { path: source });
-    }
-    const file = await open(source, "r");
-    try {
-        const before = await file.stat();
-        if (!before.isFile() || before.ino !== entry.ino || before.dev !== entry.dev) {
-            throw new InputError("zb.cli.err.fileChanged", { path: source });
-        }
-        if (before.size > remaining) throw new InputError("zb.cli.err.inputBudget");
-        const buffer = Buffer.alloc(before.size + 1);
-        let length = 0;
-        while (length < buffer.length) {
-            const { bytesRead } = await file.read(buffer, length, buffer.length - length, null);
-            if (!bytesRead) break;
-            length += bytesRead;
-        }
-        const after = await file.stat();
-        if (length !== before.size || before.size !== after.size || before.mtimeMs !== after.mtimeMs) {
-            throw new InputError("zb.cli.err.fileChanged", { path: source });
-        }
-        return Uint8Array.from(buffer.subarray(0, length));
-    } finally {
-        await file.close();
-    }
+export type HostRequest =
+    | { kind: "flags"; request: GenerateRequest }
+    | { kind: "job"; job: ResolvedJob };
+
+function hasStructureFlags(options: ParsedOptions): boolean {
+    return options.variant !== undefined ||
+        options["quine-name"] !== undefined ||
+        list(options, "attach").length > 0 ||
+        list(options, "directory").length > 0;
 }
 
 /** Same normalized host input for both `plan` and `generate`. */
-export async function readRequest(options: ParsedOptions): Promise<GenerateRequest> {
+export async function readHostRequest(options: ParsedOptions): Promise<HostRequest> {
     if (options._.length) throw new InputError("zb.cli.err.positionals");
+    const requestPath = options.request;
+    if (typeof requestPath === "string" && requestPath) {
+        if (hasStructureFlags(options)) {
+            throw new InputError("zb.cli.err.requestConflict");
+        }
+        return { kind: "job", job: await loadJob(requestPath, MAX_INPUT_BYTES) };
+    }
+
     const variant = options.variant;
     if (typeof variant !== "string" || !VARIANTS.includes(variant as VariantId)) {
         throw new InputError("zb.cli.err.variant");
@@ -73,7 +62,7 @@ export async function readRequest(options: ParsedOptions): Promise<GenerateReque
             throw new InputError("zb.cli.err.mapping", { mapping });
         }
         const archivePath = mapping.slice(0, separator);
-        const bytes = await snapshot(mapping.slice(separator + 1), remaining);
+        const bytes = await snapshotFile(mapping.slice(separator + 1), remaining);
         remaining -= bytes.byteLength;
         payloads.push({ archivePath, bytes });
     }
@@ -81,7 +70,19 @@ export async function readRequest(options: ParsedOptions): Promise<GenerateReque
         payloads.push({ archivePath: path.endsWith("/") ? path : `${path}/` });
     }
     return {
-        schema: "zb.request/v2", container: "zip", variant: variant as VariantId,
-        selfMemberPath: typeof selfName === "string" ? selfName : undefined, payloads,
+        kind: "flags",
+        request: {
+            schema: "zb.request/v2",
+            container: "zip",
+            variant: variant as VariantId,
+            selfMemberPath: typeof selfName === "string" ? selfName : undefined,
+            payloads,
+        },
     };
+}
+
+/** Convenience wrapper that returns only the core generate request. */
+export async function readRequest(options: ParsedOptions): Promise<GenerateRequest> {
+    const host = await readHostRequest(options);
+    return host.kind === "flags" ? host.request : host.job.request;
 }

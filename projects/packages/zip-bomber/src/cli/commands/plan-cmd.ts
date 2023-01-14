@@ -1,6 +1,6 @@
 import type { Cli, ParsedOptions } from "@vmz/commander";
 import { createZipBomber } from "../../node/index.js";
-import { readRequest, requestOptions } from "../request.js";
+import { readHostRequest, requestOptions } from "../request.js";
 import { inputFailure } from "../locale.js";
 
 export function registerPlanCommand(cli: Cli): void {
@@ -12,7 +12,8 @@ export function registerPlanCommand(cli: Cli): void {
 /** Plan the same attachment snapshots and layout used for generation. */
 export async function runPlan(options: ParsedOptions): Promise<number> {
     try {
-        const request = await readRequest(options);
+        const host = await readHostRequest(options);
+        const request = host.kind === "flags" ? host.request : host.job.request;
         const api = await createZipBomber();
         try {
             const outcome = await api.plan(request);
