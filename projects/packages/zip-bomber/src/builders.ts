@@ -110,8 +110,12 @@ class Draft {
         const graph = {root:0,mode,depth:mode === "finite" ? options.depth : undefined,nodes:order.map(n=>({
             members:n.members.map(member),terminal:mode === "finite" ? n.terminalMembers?.map(member) : undefined,
         }))};
+        // Recursive two-node SCC requires the explicit gapped profile; finite trees stay on the stub profile.
+        const profile = options.profile ?? (mode === "recursive"
+            ? "zip.loopy-two-node.gapped/v1"
+            : "zip.profile/v0-stub");
         const spec = Object.freeze({ variant }) as GraphSpec;
-        snapshots.set(spec,JSON.stringify({schema:"zb.request/v2",container:"zip",variant,graph,profile:options.profile,limits:options.limits}));
+        snapshots.set(spec,JSON.stringify({schema:"zb.request/v2",container:"zip",variant,graph,profile,limits:options.limits}));
         return {ok:true,value:spec,diagnostics:[]};
     }
 }

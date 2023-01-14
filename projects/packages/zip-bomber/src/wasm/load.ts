@@ -104,6 +104,7 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                   const raw = JSON.parse(generateRequestJson(requestJson)) as {
                       ok: boolean;
                       bytesBase64?: string;
+                      root?: string;
                       artifacts?: Array<{id:string;bytesBase64:string;byteLength?:number;digest?:string}>;
                       logicalNodeMap?: string[];
                       report?: unknown;
@@ -117,6 +118,7 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                       exitCode: raw.ok ? 0 : 2,
                       ok: raw.ok,
                       bytes: raw.bytesBase64 ? b64ToBytes(raw.bytesBase64) : undefined,
+                      root: raw.root,
                       artifacts: raw.artifacts?.map(a=>({id:a.id,bytes:b64ToBytes(a.bytesBase64),byteLength:String(a.byteLength ?? 0),digest:a.digest ?? ""})),
                       logicalNodeMap: raw.logicalNodeMap,
                       reportJson: JSON.stringify(raw.report ?? {}),

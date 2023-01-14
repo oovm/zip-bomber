@@ -77,6 +77,7 @@ fn assemble(
     ow: usize,
     compressed: u32,
     size: u32,
+    max_candidates: u32,
 ) -> ZbResult<(Vec<u8>, Vec<CrcByteSlot>)> {
     let fa = footer(l, ow, 0, compressed, size);
     let fb = footer(other, ow, 0, compressed, size);
@@ -86,7 +87,7 @@ fn assemble(
     qa.extend(&ha);
     let mut qb = fb.clone();
     qb.extend(&hb);
-    let stream = encode_loop(&l.local, &other.local, &qa, &qb, l.header_width, 1024)?;
+    let stream = encode_loop(&l.local, &other.local, &qa, &qb, l.header_width, max_candidates)?;
     let stream_start = ow + l.footer_width + l.header_width;
     let cd_crc = l.central.len() + 16;
     let other_crc = other.central.len() + 16;
@@ -176,7 +177,7 @@ pub(crate) fn generate(
         l.header_width = hw;
         l.footer_width = fw;
     }
-    let (provisional, _) = assemble(&layouts[0], &layouts[1], ow, 0, 0)?;
+    let (provisional, _) = assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
     let stream_len = provisional.len() - ow - fw - hw - fw;
     let total = provisional.len();
     if total as u64 > request.limits.max_artifact_bytes
@@ -196,6 +197,7 @@ pub(crate) fn generate(
         ow,
         stream_len as u32,
         total as u32,
+        request.limits.max_template_candidates,
     )?;
     let (mut b, mut sb) = assemble(
         &layouts[1],
@@ -203,6 +205,7 @@ pub(crate) fn generate(
         ow,
         stream_len as u32,
         total as u32,
+        request.limits.max_template_candidates,
     )?;
     // assemble labels source as 0 and target as 1, reversed for the other archive.
     for slot in &mut sb {

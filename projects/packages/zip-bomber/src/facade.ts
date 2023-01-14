@@ -20,6 +20,7 @@ import { encodeGenerateRequestJson } from "./wire.js";
 export type BackendGenerateResult = {
     exitCode: number;
     ok: boolean;
+    root?: string;
     bytes?: Uint8Array;
     artifacts?: Array<{ id: string; bytes: Uint8Array; byteLength?: string; digest?: string }>;
     logicalNodeMap?: string[];
@@ -158,16 +159,14 @@ function defaultCapabilities(bombStatus: CapabilityStatus): CapabilitySet {
                             ? "directed_cycle"
                             : "fractal_finite",
                 profile: "zip.profile/v0-stub",
-                status: (variant === "bomb" || variant === "quine"
-                    ? bombStatus
-                    : "declared") as CapabilityStatus,
+                status: bombStatus,
             })),
             {
                 container: "zip",
                 variant: "fractal",
                 topologyClass: "fractal_recursive",
-                profile: "zip.profile/v0-stub",
-                status: "declared",
+                profile: "zip.loopy-two-node.gapped/v1",
+                status: bombStatus,
             },
         ],
     };
@@ -202,8 +201,9 @@ function artifactSetFromRoot(
     variant: VariantId,
     artifacts?: BackendGenerateResult["artifacts"],
     logicalNodeMap?: string[],
+    actualRoot?: string,
 ): ArtifactSet {
-    const root = `${variant}-root`;
+    const root = actualRoot ?? `${variant}-root`;
     const full = artifacts?.length ? artifacts.map((a) => ({ id:a.id, container:"zip" as const, bytes:a.bytes, byteLength:a.byteLength ?? String(a.bytes.length), digest:a.digest ?? "" })) : (bytes && bytes.length ? [{ id:root, container:"zip" as const, bytes, byteLength:String(bytes.length), digest:"" }] : []);
     return { root, artifacts: full, logicalNodeMap: logicalNodeMap ?? [`root=${root}`] };
 }
@@ -216,7 +216,7 @@ function outcomeFromBackend(
     if (result.ok) {
         return {
             ok: true,
-            value: artifactSetFromRoot(result.bytes, variant, result.artifacts, result.logicalNodeMap),
+            value: artifactSetFromRoot(result.bytes, variant, result.artifacts, result.logicalNodeMap, result.root),
             report,
         };
     }

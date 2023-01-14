@@ -72,17 +72,17 @@ impl CapabilitySet {
             (
                 VariantKind::Loopy,
                 TopologyClass::DirectedCycle,
-                CapabilityStatus::Declared,
+                CapabilityStatus::Implemented,
             ),
             (
                 VariantKind::Fractal,
                 TopologyClass::FractalFinite,
-                CapabilityStatus::Declared,
+                CapabilityStatus::Implemented,
             ),
             (
                 VariantKind::Fractal,
                 TopologyClass::FractalRecursive,
-                CapabilityStatus::Declared,
+                CapabilityStatus::Implemented,
             ),
         ];
         Self {

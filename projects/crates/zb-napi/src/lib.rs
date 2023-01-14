@@ -29,6 +29,8 @@ pub struct GenerateResponse {
     pub exit_code: u32,
     /// Whether the outcome succeeded.
     pub ok: bool,
+    /// Actual root artifact identity.
+    pub root: Option<String>,
     /// Root archive bytes when present.
     pub bytes: Option<Buffer>,
     /// All emitted logical artifacts.
@@ -205,6 +207,7 @@ fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
             Ok(GenerateResponse {
                 exit_code,
                 ok: true,
+                root: Some(value.root.0.clone()),
                 bytes,
                 artifacts,
                 logical_node_map: value.logical_node_map,
@@ -225,6 +228,7 @@ fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
             Ok(GenerateResponse {
                 exit_code,
                 ok: false,
+                root: None,
                 bytes: None,
                 artifacts: Vec::new(),
                 logical_node_map: Vec::new(),

@@ -107,6 +107,7 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
         )));
     }
 
+    if is_empty_zip(bytes) { return Ok(VerificationReport { ok: true, acorn, missing_capabilities: Vec::new(), notes: vec!["minimal empty ZIP EOCD verified".into()] }); }
     let owned = bytes.to_vec();
     let index = index_zip_bytes("zb-verify.zip", owned.clone())
         .map_err(|err| ZbError::verification_failed(format!("Acorn ZIP index failed: {err}")))?;
@@ -178,5 +179,5 @@ pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
 fn is_empty_zip(bytes: &[u8]) -> bool {
     bytes.len() == 22
         && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06]
-        && bytes[8..22].iter().all(|b| *b == 0)
+        && bytes[4..22].iter().all(|b| *b == 0)
 }

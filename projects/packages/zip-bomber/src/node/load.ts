@@ -18,6 +18,7 @@ import { toUint8Array } from "../wire.js";
 export type NativeGenerateResult = {
     exitCode: number;
     ok: boolean;
+    root?: string;
     bytes?: Buffer;
     artifacts?: Array<{id:string; bytes:Buffer; byteLength?:string; digest?:string}>;
     logicalNodeMap?: string[];
@@ -106,6 +107,7 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                       exitCode: result.exitCode,
                       ok: result.ok,
                       bytes: toUint8Array(result.bytes),
+                      root: result.root,
                       artifacts: result.artifacts?.map(a=>({id:a.id,bytes:toUint8Array(a.bytes)!,byteLength:a.byteLength,digest:a.digest})),
                       logicalNodeMap: result.logicalNodeMap,
                       reportJson: result.reportJson,

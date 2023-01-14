@@ -553,7 +553,7 @@ pub(crate) fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
                 request.crc_strategy,
                 nodes,
                 count,
-                set.artifacts.len() as u64,
+                set.artifacts.iter().find(|a| a.id == set.root).unwrap().bytes.len() as u64,
                 total,
                 vec!["unified graph: every member independently decoded and byte-compared".into()],
             );
