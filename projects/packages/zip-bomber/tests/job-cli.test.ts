@@ -59,6 +59,7 @@ test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
         },
         inputs: [
             { node: 0, archivePath: "readme.txt", source: { file: "alpha.txt" } },
+            { node: 0, archivePath: "empty/", source: { directoryEntry: true } },
             { node: 1, archivePath: "note.txt", source: { file: "beta.txt" } },
         ],
         outputs: [

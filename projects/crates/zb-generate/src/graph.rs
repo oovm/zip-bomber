@@ -523,13 +523,25 @@ fn verify_members(bytes: &[u8], expected: &[StoredMember]) -> ZbResult<()> {
             actual,
             &acorn_core::ParseBudget::default(),
         )
-        .map_err(|e| ZbError::verification_failed(e.to_string()))?;
-        let decoded = source
-            .read_range(acorn_source::SourceRange {
-                start: 0,
-                len: source.length().unwrap_or(0),
-            })
-            .map_err(|e| ZbError::verification_failed(e.to_string()))?;
+        .map_err(|e| {
+            ZbError::verification_failed(format!(
+                "graph member `{}` decode failed: {e}",
+                expected.path
+            ))
+        })?;
+        // Empty stored files and directory entries decode to a zero-length source.
+        // Acorn rejects `read_range(0, 0)` with unexpected eof, so skip that call.
+        let decoded = match source.length().unwrap_or(0) {
+            0 => Vec::new(),
+            len => source
+                .read_range(acorn_source::SourceRange { start: 0, len })
+                .map_err(|e| {
+                    ZbError::verification_failed(format!(
+                        "graph member `{}` read failed: {e}",
+                        expected.path
+                    ))
+                })?,
+        };
         if !facts.checksum_ok() || decoded != expected.payload {
             return Err(ZbError::verification_failed(format!(
                 "graph member `{}` differs from declared target",
