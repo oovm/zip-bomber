@@ -233,11 +233,22 @@ fn supported(request: &GenerateRequest, components: &[Vec<usize>]) -> ZbResult<(
     }
     for c in components {
         if c.len() > 1 {
-            if c.len() == 2 && request.profile == crate::loop_zip::PROFILE {
-                continue;
+            // Living 11: two-node SCC needs the explicit gapped profile. Larger rings have
+            // no template yet and must stay unsupported_topology (never silently truncated).
+            if c.len() == 2 {
+                if request.profile == crate::loop_zip::PROFILE {
+                    continue;
+                }
+                return Err(ZbError::new(
+                    ErrorCode::UnsupportedProfile,
+                    format!(
+                        "two-state recursive SCC requires profile `{}`",
+                        crate::loop_zip::PROFILE
+                    ),
+                ));
             }
             return Err(unsupported(format!(
-                "no verified recursive template for {}-state SCC under requested profile",
+                "no verified recursive template for {}-state SCC",
                 c.len()
             )));
         }

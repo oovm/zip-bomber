@@ -1,5 +1,5 @@
 use zb_generate::{generate, plan_generate};
-use zb_types::{generate_request_from_json, Outcome};
+use zb_types::{generate_request_from_json, ErrorCode, Outcome};
 fn request(
     variant: &str,
     mode: &str,
@@ -11,6 +11,24 @@ fn request(
         {"members":[{"kind":"payload","path":"x.txt","bytes":"ZGVmZw=="},{"kind":"archive","path":"back/a.zip","target":0}],"terminal":[]}
     ]}}).to_string()).unwrap()
 }
+
+fn three_node_loopy(profile: &str) -> zb_types::GenerateRequest {
+    generate_request_from_json(
+        &serde_json::json!({
+            "schema":"zb.request/v2",
+            "variant":"loopy",
+            "profile":profile,
+            "graph":{"root":0,"mode":"recursive","nodes":[
+                {"members":[{"kind":"archive","path":"to/b.zip","target":1}]},
+                {"members":[{"kind":"archive","path":"to/c.zip","target":2}]},
+                {"members":[{"kind":"archive","path":"to/a.zip","target":0}]}
+            ]}
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
 #[test]
 fn finite_and_recursive_two_state_graphs() {
     let finite = request("fractal", "finite", "zip.profile/v0-stub", Some("2"));
@@ -34,10 +52,32 @@ fn finite_and_recursive_two_state_graphs() {
     assert_eq!(a, b);
     assert_eq!(a.artifacts.len(), 2);
 }
+
 #[test]
 fn unsupported_profile_does_not_silently_use_gapped_constructor() {
     let r = request("loopy", "recursive", "zip.profile/v0-stub", None);
-    assert!(
-        matches!(plan_generate(r),Outcome::Err{error,..} if error.code==zb_types::ErrorCode::UnsupportedTopology)
-    );
+    match plan_generate(r) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.code, ErrorCode::UnsupportedProfile);
+            assert!(error.message.contains("zip.loopy-two-node.gapped/v1"));
+        }
+        other => panic!("expected unsupported_profile, got {other:?}"),
+    }
+}
+
+#[test]
+fn three_node_loopy_is_unsupported_topology() {
+    for profile in ["zip.loopy-two-node.gapped/v1", "zip.profile/v0-stub"] {
+        match generate(three_node_loopy(profile)) {
+            Outcome::Err { error, .. } => {
+                assert_eq!(error.code, ErrorCode::UnsupportedTopology, "{profile}");
+                assert!(
+                    error.message.contains("3-state"),
+                    "profile={profile} message={}",
+                    error.message
+                );
+            }
+            other => panic!("expected unsupported_topology for {profile}, got {other:?}"),
+        }
+    }
 }
