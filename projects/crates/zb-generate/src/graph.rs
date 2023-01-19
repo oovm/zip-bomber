@@ -275,7 +275,16 @@ pub(crate) fn plan(request: GenerateRequest) -> Outcome<PlanSummary> {
     let g = request.graph.as_ref().unwrap();
     let nodes = g.nodes.len();
     let count = edges(g);
-    let result = validate(&request).and_then(|(_, c)| supported(&request, &c));
+    let result = validate(&request).and_then(|(_, components)| {
+        supported(&request, &components)?;
+        // Living 11: layout feasibility is a distinct plan fact from template support.
+        for component in &components {
+            if component.len() == 2 && request.profile == crate::loop_zip::PROFILE {
+                crate::loop_zip::check_layout(&request, component)?;
+            }
+        }
+        Ok(())
+    });
     match result {
         Ok(()) => Outcome::ok(
             PlanSummary {

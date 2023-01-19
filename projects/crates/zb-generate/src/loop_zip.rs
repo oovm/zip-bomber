@@ -6,6 +6,9 @@ use zb_solver::{crc32, crc32_shared_columns, solve_rows, CrcByteSlot};
 use zb_types::{ArchiveGraphMember as Member, ErrorCode, GenerateRequest, ZbError, ZbResult};
 /// Explicit opt-in profile for duplicated early directory records and padding gaps.
 pub(crate) const PROFILE: &str = "zip.loopy-two-node.gapped/v1";
+/// Maximum `ordinary || early-footer || recursive-LFH` width the alternating quote template can hold.
+pub(crate) const QUOTE_WINDOW: usize = 16000;
+
 struct Layout {
     local: Vec<u8>,
     central: Vec<u8>,
@@ -125,11 +128,10 @@ fn assemble(
         .collect();
     Ok((bytes, slots))
 }
-/// Generate simultaneous byte/CRC fixed points for one two-state SCC.
-pub(crate) fn generate(
+fn measure(
     request: &GenerateRequest,
     states: &[usize],
-) -> ZbResult<Vec<(usize, Vec<u8>)>> {
+) -> ZbResult<(Vec<Layout>, usize, usize, usize)> {
     let g = request.graph.as_ref().unwrap();
     let mut layouts = Vec::new();
     for &n in states {
@@ -147,7 +149,19 @@ pub(crate) fn generate(
                 ))
             }
         };
-        let ordinary=list[..list.len()-1].iter().map(|m|match m{Member::Payload{path,bytes}=>Ok(StoredMember{path:path.clone(),payload:zb_types::decode_base64(bytes)?}),_=>Err(ZbError::new(ErrorCode::UnsupportedTopology,"two-node template currently supports ordinary attachments before its sole archive edge"))}).collect::<ZbResult<Vec<_>>>()?;
+        let ordinary = list[..list.len() - 1]
+            .iter()
+            .map(|m| match m {
+                Member::Payload { path, bytes } => Ok(StoredMember {
+                    path: path.clone(),
+                    payload: zb_types::decode_base64(bytes)?,
+                }),
+                _ => Err(ZbError::new(
+                    ErrorCode::UnsupportedTopology,
+                    "two-node template currently supports ordinary attachments before its sole archive edge",
+                )),
+            })
+            .collect::<ZbResult<Vec<_>>>()?;
         let zip = emit_stored_archive(&ordinary)?;
         let end = zip.len() - 22;
         let cd_offset = u32::from_le_bytes(zip[end + 16..end + 20].try_into().unwrap()) as usize;
@@ -167,7 +181,7 @@ pub(crate) fn generate(
         .map(|l| l.central.len() + 46 + l.name.len() + 22)
         .max()
         .unwrap();
-    if ow + fw + hw > 16000 || hw > 65535 || fw > 65535 {
+    if ow + fw + hw > QUOTE_WINDOW || hw > 65535 || fw > 65535 {
         return Err(ZbError::resource_limited(
             "two-node quote layout exceeds supported window",
         ));
@@ -177,6 +191,21 @@ pub(crate) fn generate(
         l.header_width = hw;
         l.footer_width = fw;
     }
+    Ok((layouts, ow, hw, fw))
+}
+
+/// Layout-only feasibility for plan: reject oversize attachments before CRC search.
+pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbResult<()> {
+    let _ = measure(request, states)?;
+    Ok(())
+}
+
+/// Generate simultaneous byte/CRC fixed points for one two-state SCC.
+pub(crate) fn generate(
+    request: &GenerateRequest,
+    states: &[usize],
+) -> ZbResult<Vec<(usize, Vec<u8>)>> {
+    let (layouts, ow, hw, fw) = measure(request, states)?;
     let (provisional, _) = assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
     let stream_len = provisional.len() - ow - fw - hw - fw;
     let total = provisional.len();
