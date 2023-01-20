@@ -9,6 +9,8 @@ export type {
     ErrorCategory,
     GenerateReport,
     GenerateRequest,
+    LoopyEdgeFact,
+    LoopyFacts,
     Outcome,
     PayloadSpec,
     VariantId,

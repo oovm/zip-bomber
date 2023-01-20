@@ -39,6 +39,28 @@ export type ZbError = {
     message: string;
 };
 
+export type LoopyEdgeFact = {
+    from: number;
+    to: number;
+    path: string;
+    compressed_len: number;
+    target_len: number;
+    target_crc: number;
+    bytes_equal: boolean;
+};
+
+export type LoopyFacts = {
+    requested_nodes: number;
+    byte_period: number;
+    profile: string;
+    ordinary_members: number[];
+    quote_window: number;
+    ordinary_widths: number[];
+    crc_rank: number;
+    crc_free_bits: number;
+    edges: LoopyEdgeFact[];
+};
+
 export type GenerateReport = {
     schema: string;
     container: ContainerId;
@@ -50,6 +72,7 @@ export type GenerateReport = {
     error_code?: string | null;
     error_message?: string | null;
     crc_strategy?: string;
+    loopy?: LoopyFacts | null;
 };
 
 export type Artifact = {

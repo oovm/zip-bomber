@@ -54,6 +54,26 @@ fn finite_and_recursive_two_state_graphs() {
 }
 
 #[test]
+fn loopy_report_carries_structured_facts() {
+    let request = request("loopy", "recursive", "zip.loopy-two-node.gapped/v1", None);
+    match generate(request) {
+        Outcome::Ok { report, .. } => {
+            let facts = report.loopy.expect("loopy facts");
+            assert_eq!(facts.requested_nodes, 2);
+            assert_eq!(facts.byte_period, 2);
+            assert_eq!(facts.profile, "zip.loopy-two-node.gapped/v1");
+            assert_eq!(facts.ordinary_members, vec![1, 1]);
+            assert_eq!(facts.quote_window, 16000);
+            assert_eq!(facts.edges.len(), 2);
+            assert!(facts.edges.iter().all(|e| e.bytes_equal));
+            assert!(facts.crc_rank > 0);
+            assert!(report.warnings.iter().all(|w| !w.contains("crc_rank")));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn unsupported_profile_does_not_silently_use_gapped_constructor() {
     let r = request("loopy", "recursive", "zip.profile/v0-stub", None);
     match plan_generate(r) {

@@ -347,13 +347,19 @@ fn size_bound(list: &[StoredMember], request: &GenerateRequest) -> ZbResult<()> 
     Ok(())
 }
 
-fn compile(request: &GenerateRequest) -> ZbResult<ArtifactSet> {
+struct CompiledGraph {
+    set: ArtifactSet,
+    loopy: Option<zb_types::LoopyFacts>,
+}
+
+fn compile(request: &GenerateRequest) -> ZbResult<CompiledGraph> {
     let (depth, components) = validate(request)?;
     supported(request, &components)?;
     let g = request.graph.as_ref().unwrap();
     let mut compiled: BTreeMap<(usize, u32), Vec<u8>> = BTreeMap::new();
     let mut total = 0u64;
     let mut decoded = 0u64;
+    let mut loopy_facts = None;
     let mut save =
         |key, bytes: Vec<u8>, compiled: &mut BTreeMap<(usize, u32), Vec<u8>>| -> ZbResult<()> {
             total = total.saturating_add(bytes.len() as u64);
@@ -414,7 +420,9 @@ fn compile(request: &GenerateRequest) -> ZbResult<ArtifactSet> {
     } else {
         for c in components {
             if c.len() == 2 {
-                for (n, bytes) in crate::loop_zip::generate(request, &c)? {
+                let (archives, facts) = crate::loop_zip::generate(request, &c)?;
+                loopy_facts = Some(facts);
+                for (n, bytes) in archives {
                     save((n, 0), bytes, &mut compiled)?;
                 }
                 continue;
@@ -507,13 +515,16 @@ fn compile(request: &GenerateRequest) -> ZbResult<ArtifactSet> {
         };
         mapping.insert(key, id);
     }
-    Ok(ArtifactSet {
-        root: mapping[&root_key].clone(),
-        artifacts,
-        logical_node_map: mapping
-            .iter()
-            .map(|((n, d), id)| format!("node-{n}@{d}={}", id.0))
-            .collect(),
+    Ok(CompiledGraph {
+        set: ArtifactSet {
+            root: mapping[&root_key].clone(),
+            artifacts,
+            logical_node_map: mapping
+                .iter()
+                .map(|((n, d), id)| format!("node-{n}@{d}={}", id.0))
+                .collect(),
+        },
+        loopy: loopy_facts,
     })
 }
 
@@ -578,9 +589,9 @@ pub(crate) fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
     let nodes = g.nodes.len();
     let count = edges(g);
     match compile(&request) {
-        Ok(set) => {
+        Ok(CompiledGraph { set, loopy }) => {
             let total = set.artifacts.iter().map(|a| a.bytes.len() as u64).sum();
-            let report = GenerateReport::ok(
+            let mut report = GenerateReport::ok(
                 request.variant,
                 request.crc_strategy,
                 nodes,
@@ -589,6 +600,9 @@ pub(crate) fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
                 total,
                 vec!["unified graph: every member independently decoded and byte-compared".into()],
             );
+            if let Some(facts) = loopy {
+                report = report.with_loopy(facts);
+            }
             Outcome::ok(set, report)
         }
         Err(err) => Outcome::err(

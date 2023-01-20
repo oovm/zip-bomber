@@ -22,7 +22,9 @@ pub use error::{ErrorCategory, ErrorCode, ZbError, ZbResult};
 pub use graph::{ArchiveGraphMember, ArchiveGraphNode, ArchiveGraphSpec};
 pub use outcome::Outcome;
 pub use profile::{zip_layout, GenerateLimits, ZipProfile, ZIP_PROFILE_V0};
-pub use report::{GenerateReport, ReportStatus, REPORT_SCHEMA_V1, REPORT_SCHEMA_V2};
+pub use report::{
+    GenerateReport, LoopyEdgeFact, LoopyFacts, ReportStatus, REPORT_SCHEMA_V1, REPORT_SCHEMA_V2,
+};
 pub use request::{
     CrcStrategy, FractalMode, FractalSpec, GenerateRequest, PayloadSpec, REQUEST_SCHEMA_V2,
 };

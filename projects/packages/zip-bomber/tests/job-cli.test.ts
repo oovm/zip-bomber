@@ -87,6 +87,13 @@ test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
     assert.ok(existsSync(join(output, "beta.zip")));
     assert.ok(existsSync(join(output, "manifest.json")));
     assert.ok(existsSync(join(output, "report.json")));
+    const report = JSON.parse(readFileSync(join(output, "report.json"), "utf8"));
+    assert.ok(report.loopy);
+    assert.equal(report.loopy.requested_nodes, 2);
+    assert.equal(report.loopy.byte_period, 2);
+    assert.equal(report.loopy.profile, "zip.loopy-two-node.gapped/v1");
+    assert.equal(report.loopy.edges.length, 2);
+    assert.ok(report.loopy.edges.every((edge: { bytes_equal: boolean }) => edge.bytes_equal));
 
     const alpha = readFileSync(join(output, "alpha.zip"));
     const beta = readFileSync(join(output, "beta.zip"));

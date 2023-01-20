@@ -3,7 +3,10 @@
 use crate::templates::loopy::encode_loop;
 use crate::{emit_stored_archive, StoredMember};
 use zb_solver::{crc32, crc32_shared_columns, solve_rows, CrcByteSlot};
-use zb_types::{ArchiveGraphMember as Member, ErrorCode, GenerateRequest, ZbError, ZbResult};
+use zb_types::{
+    ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZbError,
+    ZbResult,
+};
 /// Explicit opt-in profile for duplicated early directory records and padding gaps.
 pub(crate) const PROFILE: &str = "zip.loopy-two-node.gapped/v1";
 /// Maximum `ordinary || early-footer || recursive-LFH` width the alternating quote template can hold.
@@ -128,19 +131,29 @@ fn assemble(
         .collect();
     Ok((bytes, slots))
 }
-fn measure(
-    request: &GenerateRequest,
-    states: &[usize],
-) -> ZbResult<(Vec<Layout>, usize, usize, usize)> {
+struct Measured {
+    layouts: Vec<Layout>,
+    ordinary_widths: Vec<u64>,
+    ordinary_members: Vec<usize>,
+    archive_paths: Vec<String>,
+    ow: usize,
+    hw: usize,
+    fw: usize,
+}
+
+fn measure(request: &GenerateRequest, states: &[usize]) -> ZbResult<Measured> {
     let g = request.graph.as_ref().unwrap();
     let mut layouts = Vec::new();
+    let mut ordinary_widths = Vec::new();
+    let mut ordinary_members = Vec::new();
+    let mut archive_paths = Vec::new();
     for &n in states {
         let list = &g.nodes[n].members;
-        let name = match list.last() {
+        let (name, path) = match list.last() {
             Some(Member::Archive { path, target, .. })
                 if states.contains(target) && *target != n =>
             {
-                path.as_bytes().to_vec()
+                (path.as_bytes().to_vec(), path.clone())
             }
             _ => {
                 return Err(ZbError::new(
@@ -165,6 +178,9 @@ fn measure(
         let zip = emit_stored_archive(&ordinary)?;
         let end = zip.len() - 22;
         let cd_offset = u32::from_le_bytes(zip[end + 16..end + 20].try_into().unwrap()) as usize;
+        ordinary_widths.push(cd_offset as u64);
+        ordinary_members.push(ordinary.len());
+        archive_paths.push(path);
         layouts.push(Layout {
             local: zip[..cd_offset].to_vec(),
             central: zip[cd_offset..end].to_vec(),
@@ -191,7 +207,15 @@ fn measure(
         l.header_width = hw;
         l.footer_width = fw;
     }
-    Ok((layouts, ow, hw, fw))
+    Ok(Measured {
+        layouts,
+        ordinary_widths,
+        ordinary_members,
+        archive_paths,
+        ow,
+        hw,
+        fw,
+    })
 }
 
 /// Layout-only feasibility for plan: reject oversize attachments before CRC search.
@@ -204,9 +228,19 @@ pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbRes
 pub(crate) fn generate(
     request: &GenerateRequest,
     states: &[usize],
-) -> ZbResult<Vec<(usize, Vec<u8>)>> {
-    let (layouts, ow, hw, fw) = measure(request, states)?;
-    let (provisional, _) = assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
+) -> ZbResult<(Vec<(usize, Vec<u8>)>, LoopyFacts)> {
+    let measured = measure(request, states)?;
+    let Measured {
+        layouts,
+        ordinary_widths,
+        ordinary_members,
+        archive_paths,
+        ow,
+        hw,
+        fw,
+    } = measured;
+    let (provisional, _) =
+        assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
     let stream_len = provisional.len() - ow - fw - hw - fw;
     let total = provisional.len();
     if total as u64 > request.limits.max_artifact_bytes
@@ -270,9 +304,9 @@ pub(crate) fn generate(
             bytes[slot.offset] = values[slot.variable];
         }
     }
-    if crc32(&a) != u32::from_le_bytes(values[..4].try_into().unwrap())
-        || crc32(&b) != u32::from_le_bytes(values[4..].try_into().unwrap())
-    {
+    let crc_a = u32::from_le_bytes(values[..4].try_into().unwrap());
+    let crc_b = u32::from_le_bytes(values[4..].try_into().unwrap());
+    if crc32(&a) != crc_a || crc32(&b) != crc_b {
         return Err(ZbError::verification_failed(
             "loop CRC solution failed back substitution",
         ));
@@ -300,5 +334,36 @@ pub(crate) fn generate(
             "two-state loop collapses to byte period one",
         ));
     }
-    Ok(vec![(states[0], a), (states[1], b)])
+    let byte_period = if a == b { 1 } else { 2 };
+    let facts = LoopyFacts {
+        requested_nodes: states.len(),
+        byte_period,
+        profile: PROFILE.to_string(),
+        ordinary_members,
+        quote_window: QUOTE_WINDOW as u64,
+        ordinary_widths,
+        crc_rank: solution.rank as u32,
+        crc_free_bits: (64u32).saturating_sub(solution.rank as u32),
+        edges: vec![
+            LoopyEdgeFact {
+                from: states[0],
+                to: states[1],
+                path: archive_paths[0].clone(),
+                compressed_len: stream_len as u64,
+                target_len: b.len() as u64,
+                target_crc: crc_b,
+                bytes_equal: true,
+            },
+            LoopyEdgeFact {
+                from: states[1],
+                to: states[0],
+                path: archive_paths[1].clone(),
+                compressed_len: stream_len as u64,
+                target_len: a.len() as u64,
+                target_crc: crc_a,
+                bytes_equal: true,
+            },
+        ],
+    };
+    Ok((vec![(states[0], a), (states[1], b)], facts))
 }

@@ -186,6 +186,7 @@ function parseReport(reportJson: string, fallback: VariantId): GenerateReport {
             error_code: parsed.error_code,
             error_message: parsed.error_message,
             crc_strategy: parsed.crc_strategy,
+            loopy: parsed.loopy ?? undefined,
         };
     } catch {
         const report = notImplementedReport(fallback);

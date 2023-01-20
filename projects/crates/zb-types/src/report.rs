@@ -9,6 +9,48 @@ pub const REPORT_SCHEMA_V1: &str = "zb.report/v1";
 /// Design-target report schema (fields freeze before algorithm gates).
 pub const REPORT_SCHEMA_V2: &str = "zb.report/v2";
 
+/// One directed cycle edge after independent inflate / CRC checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopyEdgeFact {
+    /// Source state index in the request graph.
+    pub from: usize,
+    /// Target state index.
+    pub to: usize,
+    /// Recursive member path on the source archive.
+    pub path: String,
+    /// Compressed stream length for the recursive member.
+    pub compressed_len: u64,
+    /// Target archive length.
+    pub target_len: u64,
+    /// Target archive CRC-32.
+    pub target_crc: u32,
+    /// Inflate(source recursive member) equals target bytes.
+    pub bytes_equal: bool,
+}
+
+/// Structured Loopy / recursive two-node facts (Living 11). Not stuffed into warnings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopyFacts {
+    /// Requested cycle length.
+    pub requested_nodes: usize,
+    /// Minimum byte period of the produced cyclic word.
+    pub byte_period: usize,
+    /// Construction profile id.
+    pub profile: String,
+    /// Ordinary (non-archive) member counts per cycle state in root order.
+    pub ordinary_members: Vec<usize>,
+    /// Quote window budget (`ordinary || early-footer || recursive-LFH`).
+    pub quote_window: u64,
+    /// Measured ordinary local widths before padding, per cycle state.
+    pub ordinary_widths: Vec<u64>,
+    /// Shared CRC system rank when solved.
+    pub crc_rank: u32,
+    /// Free bits after rank (constraint columns minus rank).
+    pub crc_free_bits: u32,
+    /// Per-edge verification facts in cycle order.
+    pub edges: Vec<LoopyEdgeFact>,
+}
+
 /// High-level generation status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -61,6 +103,9 @@ pub struct GenerateReport {
     pub error_code: Option<String>,
     /// Human error message when failed.
     pub error_message: Option<String>,
+    /// Structured Loopy facts when a two-node gapped cycle was constructed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loopy: Option<LoopyFacts>,
 }
 
 impl GenerateReport {
@@ -89,6 +134,7 @@ impl GenerateReport {
             error_message: Some(format!(
                 "variant `{variant}` is recognized but not implemented"
             )),
+            loopy: None,
         }
     }
 
@@ -116,6 +162,7 @@ impl GenerateReport {
             warnings,
             error_code: None,
             error_message: None,
+            loopy: None,
         }
     }
 
@@ -141,6 +188,13 @@ impl GenerateReport {
             warnings: Vec::new(),
             error_code: Some(err.code.as_str().to_string()),
             error_message: Some(err.message.clone()),
+            loopy: None,
         }
+    }
+
+    /// Attach structured Loopy facts without mutating warnings.
+    pub fn with_loopy(mut self, facts: LoopyFacts) -> Self {
+        self.loopy = Some(facts);
+        self
     }
 }

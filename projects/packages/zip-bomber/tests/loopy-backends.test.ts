@@ -91,6 +91,19 @@ test("Node and WASM Loopy builders share a two-node byte cycle", async () => {
         assert.ok((await node.verify(nativeGen.value)).ok);
         assert.ok((await wasm.verify(wasmGen.value)).ok);
 
+        const nativeFacts = nativeGen.report.loopy;
+        const wasmFacts = wasmGen.report.loopy;
+        assert.ok(nativeFacts, "native report must carry structured loopy facts");
+        assert.ok(wasmFacts, "wasm report must carry structured loopy facts");
+        assert.deepEqual(nativeFacts, wasmFacts);
+        assert.equal(nativeFacts!.requested_nodes, 2);
+        assert.equal(nativeFacts!.byte_period, 2);
+        assert.equal(nativeFacts!.profile, "zip.loopy-two-node.gapped/v1");
+        assert.equal(nativeFacts!.edges.length, 2);
+        assert.ok(nativeFacts!.edges.every((edge) => edge.bytes_equal));
+        assert.ok(nativeFacts!.crc_rank > 0);
+        assert.ok((nativeGen.report.warnings ?? []).every((w) => !w.includes("crc_rank")));
+
         const byId = new Map(nativeGen.value.artifacts.map((item) => [item.id, Buffer.from(item.bytes)]));
         const root = byId.get(nativeGen.value.root);
         assert.ok(root);
