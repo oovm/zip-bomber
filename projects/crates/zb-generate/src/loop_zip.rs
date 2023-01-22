@@ -5,10 +5,10 @@ use crate::{emit_stored_archive, StoredMember};
 use zb_solver::{crc32, crc32_shared_columns, solve_rows, CrcByteSlot};
 use zb_types::{
     ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZbError,
-    ZbResult,
+    ZbResult, ZIP_LOOPY_TWO_NODE_GAPPED_V1,
 };
 /// Explicit opt-in profile for duplicated early directory records and padding gaps.
-pub(crate) const PROFILE: &str = "zip.loopy-two-node.gapped/v1";
+pub(crate) const PROFILE: &str = ZIP_LOOPY_TWO_NODE_GAPPED_V1;
 /// Maximum `ordinary || early-footer || recursive-LFH` width the alternating quote template can hold.
 pub(crate) const QUOTE_WINDOW: usize = 16000;
 

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use zb_types::{
     ArchiveGraphMember as Member, ArchiveGraphSpec, Artifact, ArtifactId, ArtifactSet,
     ContainerKind, ErrorCode, FractalMode, GenerateReport, GenerateRequest, Outcome, PayloadSpec,
-    TopologyGraph, VariantKind, ZbError, ZbResult, ZIP_PROFILE_V0,
+    TopologyGraph, VariantKind, ZbError, ZbResult, ZIP_LOOPY_TWO_NODE_GAPPED_V1, ZIP_PROFILE_V0,
 };
 
 fn invalid(message: impl Into<String>) -> ZbError {
@@ -76,7 +76,7 @@ fn validate(request: &GenerateRequest) -> ZbResult<(u32, Vec<Vec<usize>>)> {
     if !matches!(request.variant, VariantKind::Loopy | VariantKind::Fractal) {
         return Err(invalid("graph requires loopy or fractal intent"));
     }
-    if request.profile != ZIP_PROFILE_V0 && request.profile != crate::loop_zip::PROFILE {
+    if request.profile != ZIP_PROFILE_V0 && request.profile != ZIP_LOOPY_TWO_NODE_GAPPED_V1 {
         return Err(ZbError::new(
             ErrorCode::UnsupportedProfile,
             "unknown graph construction profile",

@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ContainerKind, VariantKind, ZIP_PROFILE_V0};
+use crate::{
+    ContainerKind, VariantKind, ZIP_LOOPY_TWO_NODE_GAPPED_V1, ZIP_PROFILE_V0,
+};
 
 /// Coarse topology class for capability registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -55,44 +57,48 @@ pub struct CapabilitySet {
 }
 
 impl CapabilitySet {
-    /// Current capability snapshot (Bomb nested tree is implementable).
+    /// Current capability snapshot keyed by variant × topology × profile.
     pub fn template_declared() -> Self {
-        let profile = ZIP_PROFILE_V0.to_string();
         let rows = [
             (
                 VariantKind::Bomb,
                 TopologyClass::NestedTree,
+                ZIP_PROFILE_V0,
                 CapabilityStatus::Implemented,
             ),
             (
                 VariantKind::Quine,
                 TopologyClass::SelfLoop,
-                CapabilityStatus::Implemented,
+                ZIP_PROFILE_V0,
+                CapabilityStatus::Verified,
             ),
             (
                 VariantKind::Loopy,
                 TopologyClass::DirectedCycle,
-                CapabilityStatus::Implemented,
+                ZIP_LOOPY_TWO_NODE_GAPPED_V1,
+                CapabilityStatus::Verified,
             ),
             (
                 VariantKind::Fractal,
                 TopologyClass::FractalFinite,
+                ZIP_PROFILE_V0,
                 CapabilityStatus::Implemented,
             ),
             (
                 VariantKind::Fractal,
                 TopologyClass::FractalRecursive,
+                ZIP_LOOPY_TWO_NODE_GAPPED_V1,
                 CapabilityStatus::Implemented,
             ),
         ];
         Self {
             entries: rows
                 .into_iter()
-                .map(|(variant, topology_class, status)| CapabilityEntry {
+                .map(|(variant, topology_class, profile, status)| CapabilityEntry {
                     container: ContainerKind::Zip,
                     variant,
                     topology_class,
-                    profile: profile.clone(),
+                    profile: profile.to_string(),
                     status,
                 })
                 .collect(),

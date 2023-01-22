@@ -1,6 +1,9 @@
 //! ZIP local-header / central-directory layout planning.
 
-use zb_types::{zip_layout, GenerateRequest, ZbError, ZbResult, ZipProfile, ZIP_PROFILE_V0};
+use zb_types::{
+    zip_layout, GenerateRequest, ZbError, ZbResult, ZipProfile, ZIP_LOOPY_TWO_NODE_GAPPED_V1,
+    ZIP_PROFILE_V0,
+};
 
 /// Planned sizes for one archive member (name + extras already chosen).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,13 +54,13 @@ pub struct LayoutPlan {
 
 /// Resolve the ZIP profile named by the request.
 pub fn resolve_profile(request: &GenerateRequest) -> ZbResult<ZipProfile> {
-    if request.profile == ZIP_PROFILE_V0 {
-        Ok(ZipProfile::v0_stub())
-    } else {
-        Err(ZbError::new(
+    match request.profile.as_str() {
+        ZIP_PROFILE_V0 => Ok(ZipProfile::v0_stub()),
+        ZIP_LOOPY_TWO_NODE_GAPPED_V1 => Ok(ZipProfile::loopy_two_node_gapped_v1()),
+        other => Err(ZbError::new(
             zb_types::ErrorCode::UnsupportedProfile,
-            format!("unsupported profile `{}`", request.profile),
-        ))
+            format!("unsupported profile `{other}`"),
+        )),
     }
 }
 

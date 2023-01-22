@@ -145,29 +145,29 @@ function toWireJson(request: GenerateRequest): string {
 }
 
 function defaultCapabilities(bombStatus: CapabilityStatus): CapabilitySet {
+    // Stub backends stay fully `declared`. When a real binding is absent but a
+    // bomb hook is present, mirror the Rust matrix profiles and promote only
+    // the rows that already cleared Living `07` verified gates.
+    const live = bombStatus !== "declared";
+    const row = (
+        variant: (typeof VARIANTS)[number],
+        topologyClass: CapabilitySet["entries"][number]["topologyClass"],
+        profile: string,
+        status: CapabilityStatus,
+    ) => ({
+        container: "zip" as const,
+        variant,
+        topologyClass,
+        profile,
+        status: live ? status : ("declared" as const),
+    });
     return {
         entries: [
-            ...VARIANTS.map((variant) => ({
-                container: "zip" as const,
-                variant,
-                topologyClass:
-                    variant === "bomb"
-                        ? "nested_tree"
-                        : variant === "quine"
-                          ? "self_loop"
-                          : variant === "loopy"
-                            ? "directed_cycle"
-                            : "fractal_finite",
-                profile: "zip.profile/v0-stub",
-                status: bombStatus,
-            })),
-            {
-                container: "zip",
-                variant: "fractal",
-                topologyClass: "fractal_recursive",
-                profile: "zip.loopy-two-node.gapped/v1",
-                status: bombStatus,
-            },
+            row("bomb", "nested_tree", "zip.profile/v0-stub", "implemented"),
+            row("quine", "self_loop", "zip.profile/v0-stub", "verified"),
+            row("loopy", "directed_cycle", "zip.loopy-two-node.gapped/v1", "verified"),
+            row("fractal", "fractal_finite", "zip.profile/v0-stub", "implemented"),
+            row("fractal", "fractal_recursive", "zip.loopy-two-node.gapped/v1", "implemented"),
         ],
     };
 }

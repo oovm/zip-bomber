@@ -38,6 +38,12 @@ test("stub capabilities keep quine declared and mark bomb when hooked", async ()
     const caps = await hooked.capabilities();
     const bomb = caps.entries.find((e) => e.variant === "bomb");
     assert.equal(bomb?.status, "implemented");
+    const quine = caps.entries.find((e) => e.variant === "quine");
+    assert.equal(quine?.status, "verified");
+    assert.equal(quine?.profile, "zip.profile/v0-stub");
+    const loopy = caps.entries.find((e) => e.variant === "loopy");
+    assert.equal(loopy?.status, "verified");
+    assert.equal(loopy?.profile, "zip.loopy-two-node.gapped/v1");
     const bombOut = await hooked.zipBomb();
     assert.equal(bombOut.ok, true);
     if (bombOut.ok) {

@@ -1,7 +1,8 @@
 use zb_types::{
     decode_base64, encode_base64, generate_request_from_json, generate_request_to_json, zip_layout,
-    ArchiveEdge, EdgeRole, GenerateLimits, GenerateRequest, NodeId, PayloadSpec, TopologyGraph,
-    VariantKind, ZipProfile, ALL_VARIANTS, REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
+    ArchiveEdge, CapabilitySet, CapabilityStatus, EdgeRole, GenerateLimits, GenerateRequest, NodeId,
+    PayloadSpec, TopologyClass, TopologyGraph, VariantKind, ZipProfile, ALL_VARIANTS,
+    REQUEST_SCHEMA_V2, ZIP_LOOPY_TWO_NODE_GAPPED_V1, ZIP_PROFILE_V0,
 };
 
 #[test]
@@ -48,13 +49,48 @@ fn zip_profile_v0_and_limits_defaults() {
     let profile = ZipProfile::v0_stub();
     assert_eq!(profile.id, ZIP_PROFILE_V0);
     assert!(!profile.allow_encryption);
+    assert!(!profile.allow_early_directory_gap);
     assert_eq!(zip_layout::LFH_FIXED, 30);
     assert_eq!(zip_layout::CD_ENTRY_FIXED, 46);
+    let gapped = ZipProfile::loopy_two_node_gapped_v1();
+    assert_eq!(gapped.id, ZIP_LOOPY_TWO_NODE_GAPPED_V1);
+    assert!(gapped.allow_early_directory_gap);
     let limits = GenerateLimits::small_sample();
     assert_eq!(limits.max_nodes, 64);
     let req = GenerateRequest::bare(VariantKind::Bomb);
     assert_eq!(req.profile, ZIP_PROFILE_V0);
     assert_eq!(req.limits.max_edges, 256);
+}
+
+#[test]
+fn capability_matrix_profiles_and_verified_gates() {
+    let caps = CapabilitySet::template_declared();
+    assert_eq!(caps.entries.len(), 5);
+    let quine = caps
+        .entries
+        .iter()
+        .find(|e| e.variant == VariantKind::Quine)
+        .expect("quine row");
+    assert_eq!(quine.profile, ZIP_PROFILE_V0);
+    assert_eq!(quine.status, CapabilityStatus::Verified);
+    assert_eq!(quine.topology_class, TopologyClass::SelfLoop);
+    let loopy = caps
+        .entries
+        .iter()
+        .find(|e| e.variant == VariantKind::Loopy)
+        .expect("loopy row");
+    assert_eq!(loopy.profile, ZIP_LOOPY_TWO_NODE_GAPPED_V1);
+    assert_eq!(loopy.status, CapabilityStatus::Verified);
+    let fractal_rec = caps
+        .entries
+        .iter()
+        .find(|e| {
+            e.variant == VariantKind::Fractal
+                && e.topology_class == TopologyClass::FractalRecursive
+        })
+        .expect("fractal recursive row");
+    assert_eq!(fractal_rec.profile, ZIP_LOOPY_TWO_NODE_GAPPED_V1);
+    assert_eq!(fractal_rec.status, CapabilityStatus::Implemented);
 }
 
 #[test]
