@@ -218,9 +218,19 @@ fn measure(request: &GenerateRequest, states: &[usize]) -> ZbResult<Measured> {
     })
 }
 
-/// Layout-only feasibility for plan: reject oversize attachments before CRC search.
+/// Layout feasibility for plan: quote window plus a bounded tail-width template candidate.
+/// CRC search is not run here. Unsatisfiable tail width returns `search_exhausted`.
 pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbResult<()> {
-    let _ = measure(request, states)?;
+    let measured = measure(request, states)?;
+    let Measured { layouts, ow, .. } = measured;
+    let _ = assemble(
+        &layouts[0],
+        &layouts[1],
+        ow,
+        0,
+        0,
+        request.limits.max_template_candidates,
+    )?;
     Ok(())
 }
 

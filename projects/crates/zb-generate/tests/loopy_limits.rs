@@ -47,3 +47,59 @@ fn oversize_ordinary_member_rejects_quote_window() {
         other => panic!("generate expected resource_limited, got {other:?}"),
     }
 }
+
+fn plan_ok(size: usize) -> bool {
+    let request = loopy_with_payload(&zb_types::encode_base64(&vec![0u8; size]));
+    matches!(plan_generate(request), Outcome::Ok { .. })
+}
+
+#[test]
+fn quote_and_tail_width_boundary_is_tight() {
+    // Binary-search the largest ordinary payload that still plans (window + bounded tail width).
+    let mut lo = 0usize;
+    let mut hi = 20 * 1024;
+    assert!(!plan_ok(hi));
+    while lo + 1 < hi {
+        let mid = (lo + hi) / 2;
+        if plan_ok(mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    assert!(plan_ok(lo), "expected size {lo} to fit template layout");
+    assert!(!plan_ok(lo + 1), "expected size {} to fail plan", lo + 1);
+    match generate(loopy_with_payload(&zb_types::encode_base64(&vec![0u8; lo]))) {
+        Outcome::Ok { value, .. } => assert_eq!(value.artifacts.len(), 2),
+        other => panic!("boundary generate should succeed, got {other:?}"),
+    }
+    match plan_generate(loopy_with_payload(&zb_types::encode_base64(&vec![0u8; lo + 1]))) {
+        Outcome::Err { error, .. } => {
+            assert!(
+                matches!(
+                    error.code,
+                    ErrorCode::ResourceLimited | ErrorCode::SearchExhausted
+                ),
+                "{error:?}"
+            );
+        }
+        other => panic!("expected layout failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn low_decode_budget_rejects_two_node_layout() {
+    let mut request = loopy_with_payload("c2hvcnQ=");
+    request.limits.max_decoded_bytes = 64;
+    match generate(request) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.code, ErrorCode::ResourceLimited);
+            assert!(
+                error.message.contains("budget") || error.message.contains("layout"),
+                "{}",
+                error.message
+            );
+        }
+        other => panic!("expected resource_limited, got {other:?}"),
+    }
+}
