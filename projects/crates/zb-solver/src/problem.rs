@@ -3,7 +3,8 @@
 //! Layout / codec stay in `zb-generate`. This module only validates affine bit
 //! equations, enforces solver budgets, and delegates elimination to [`crate::gf2`].
 
-use crate::gf2::{solve, BitMatrix, Gf2Solution};
+use crate::cancel::CancelToken;
+use crate::gf2::{solve_with_cancel, BitMatrix, Gf2Solution};
 use crate::{Assignment, EquationId, VariableId};
 use zb_types::{ErrorCategory, ErrorCode, ZbError, ZbResult};
 
@@ -89,7 +90,7 @@ pub enum SolveOutcome {
         /// Which budget field blocked the solve.
         message: String,
     },
-    /// Caller cancelled before completion (reserved for future cancel tokens).
+    /// Caller cancelled at a cooperative checkpoint.
     Cancelled {
         /// Cancellation note.
         message: String,
@@ -243,8 +244,25 @@ pub fn solve_crc_identity_blocks(
     budget: SolverBudget,
     problem_digest: Option<String>,
 ) -> SolveOutcome {
+    solve_crc_identity_blocks_with_cancel(
+        blocks,
+        variable_bits,
+        budget,
+        problem_digest,
+        &CancelToken::new(),
+    )
+}
+
+/// [`solve_crc_identity_blocks`] with a shared cancel token.
+pub fn solve_crc_identity_blocks_with_cancel(
+    blocks: &[(u32, &[u32])],
+    variable_bits: u32,
+    budget: SolverBudget,
+    problem_digest: Option<String>,
+    cancel: &CancelToken,
+) -> SolveOutcome {
     match crc_identity_residual_problem(blocks, variable_bits, budget, problem_digest) {
-        Ok(problem) => solve_problem(&problem),
+        Ok(problem) => solve_problem_with_cancel(&problem, cancel),
         Err(outcome) => outcome,
     }
 }
@@ -255,12 +273,25 @@ pub fn solve_crc_identity_blocks(
 /// [`ZbResult`], so generators can branch on `unsat` vs `resource_limited`
 /// without losing equation identity.
 pub fn solve_problem(problem: &ConstraintProblem) -> SolveOutcome {
+    solve_problem_with_cancel(problem, &CancelToken::new())
+}
+
+/// [`solve_problem`] with cooperative cancel checks while building and eliminating.
+pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelToken) -> SolveOutcome {
+    if let Err(err) = cancel.check() {
+        return SolveOutcome::Cancelled {
+            message: err.message,
+        };
+    }
     if let Err(err) = problem.validate() {
         return match err.category {
             ErrorCategory::ResourceLimited => SolveOutcome::ResourceLimited {
                 message: err.message,
             },
             ErrorCategory::InvalidRequest => SolveOutcome::InvalidProblem {
+                message: err.message,
+            },
+            ErrorCategory::Cancelled => SolveOutcome::Cancelled {
                 message: err.message,
             },
             _ => SolveOutcome::InternalError {
@@ -273,6 +304,11 @@ pub fn solve_problem(problem: &ConstraintProblem) -> SolveOutcome {
     let rows = problem.equations.len();
     let mut matrix = BitMatrix::zeros(rows, cols);
     for (row, eq) in problem.equations.iter().enumerate() {
+        if let Err(err) = cancel.check() {
+            return SolveOutcome::Cancelled {
+                message: err.message,
+            };
+        }
         // XOR duplicate variable indices so they cancel over GF(2).
         let mut bits = vec![false; cols];
         for var in &eq.variables {
@@ -289,7 +325,7 @@ pub fn solve_problem(problem: &ConstraintProblem) -> SolveOutcome {
         }
     }
 
-    match solve(matrix) {
+    match solve_with_cancel(matrix, cancel) {
         Ok(sol) => {
             let evidence = SolveEvidence {
                 rank: sol.rank,
@@ -300,7 +336,11 @@ pub fn solve_problem(problem: &ConstraintProblem) -> SolveOutcome {
             SolveOutcome::from_gf2(sol, evidence)
         }
         Err(err) => {
-            if err.category == zb_types::ErrorCategory::ConstraintUnsatisfied {
+            if err.category == ErrorCategory::Cancelled {
+                SolveOutcome::Cancelled {
+                    message: err.message,
+                }
+            } else if err.category == ErrorCategory::ConstraintUnsatisfied {
                 SolveOutcome::Unsat {
                     message: err.message,
                     conflicting_equation: None,

@@ -6,18 +6,21 @@
 
 #![deny(missing_docs)]
 
+mod cancel;
 mod crc;
 mod gf2;
 mod problem;
 
+pub use cancel::{never as never_cancel, CancelToken};
 pub use crc::{
     crc32, crc32_affine_columns, crc32_shared_columns, u32_to_bits, CrcByteSlot, CRC32_CHECK,
     CRC32_POLY,
 };
-pub use gf2::{solve, solve_rows, BitMatrix, Gf2Solution};
+pub use gf2::{solve, solve_rows, solve_rows_with_cancel, solve_with_cancel, BitMatrix, Gf2Solution};
 pub use problem::{
-    crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ConstraintProblem,
-    LinearEquation, SolveEvidence, SolveOutcome, SolverBudget,
+    crc_identity_residual_problem, solve_crc_identity_blocks, solve_crc_identity_blocks_with_cancel,
+    solve_problem, solve_problem_with_cancel, ConstraintProblem, LinearEquation, SolveEvidence,
+    SolveOutcome, SolverBudget,
 };
 
 /// Stable variable identity inside a frozen skeleton problem.

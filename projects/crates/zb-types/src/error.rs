@@ -93,6 +93,8 @@ pub enum ErrorCode {
     VerificationFailed,
     /// Finite template search ended without a solution.
     SearchExhausted,
+    /// Cooperative cancellation requested by the host.
+    Cancelled,
     /// Algorithm path is not wired yet.
     NotImplemented,
     /// Internal invariant broke.
@@ -112,6 +114,7 @@ impl ErrorCode {
             Self::ResourceLimited => "ZB_RESOURCE_LIMITED",
             Self::VerificationFailed => "ZB_VERIFICATION_FAILED",
             Self::SearchExhausted => "ZB_SEARCH_EXHAUSTED",
+            Self::Cancelled => "ZB_CANCELLED",
             Self::NotImplemented => "ZB_NOT_IMPLEMENTED",
             Self::Internal => "ZB_INTERNAL",
         }
@@ -129,6 +132,7 @@ impl ErrorCode {
             Self::ResourceLimited => ErrorCategory::ResourceLimited,
             Self::VerificationFailed => ErrorCategory::VerificationFailed,
             Self::SearchExhausted => ErrorCategory::SearchExhausted,
+            Self::Cancelled => ErrorCategory::Cancelled,
             Self::NotImplemented => ErrorCategory::NotImplemented,
             Self::Internal => ErrorCategory::InternalError,
         }
@@ -185,6 +189,11 @@ impl ZbError {
     /// Finite template search exhausted helper.
     pub fn search_exhausted(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::SearchExhausted, message)
+    }
+
+    /// Cooperative cancellation helper.
+    pub fn cancelled(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Cancelled, message)
     }
 }
 

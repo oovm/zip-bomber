@@ -37,8 +37,9 @@ pub use variants::ArtifactBundle;
 pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
 /// Re-export solver surface so generate callers share one dependency path.
 pub use zb_solver::{
-    crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix, EquationId,
-    Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK, CRC32_POLY,
+    crc32, crc32_affine_columns, solve, solve_rows, solve_with_cancel, u32_to_bits, Assignment,
+    BitMatrix, CancelToken, EquationId, Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK,
+    CRC32_POLY,
 };
 
 /// List supported variant ids in stable order.

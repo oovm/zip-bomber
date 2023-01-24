@@ -1,5 +1,6 @@
 //! GF(2) bitset linear solver for fixed-skeleton CRC / byte equations.
 
+use crate::cancel::CancelToken;
 use zb_types::{ErrorCategory, ErrorCode, ZbError, ZbResult};
 
 /// Dense GF(2) augmented matrix: each row packs `cols` variable bits + 1 RHS bit.
@@ -87,13 +88,20 @@ pub struct Gf2Solution {
 }
 
 /// Gaussian elimination on an augmented GF(2) system.
-pub fn solve(mut matrix: BitMatrix) -> ZbResult<Gf2Solution> {
+pub fn solve(matrix: BitMatrix) -> ZbResult<Gf2Solution> {
+    solve_with_cancel(matrix, &CancelToken::new())
+}
+
+/// Gaussian elimination with cooperative cancel checks on each pivot column.
+pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResult<Gf2Solution> {
     let rows = matrix.rows;
     let cols = matrix.cols;
     let mut pivot_of_col = vec![None; cols];
     let mut row = 0usize;
 
+    cancel.check()?;
     for col in 0..cols {
+        cancel.check()?;
         if row >= rows {
             break;
         }
@@ -117,6 +125,7 @@ pub fn solve(mut matrix: BitMatrix) -> ZbResult<Gf2Solution> {
         row += 1;
     }
 
+    cancel.check()?;
     for r in 0..rows {
         let mut zero_vars = true;
         for c in 0..cols {
@@ -152,6 +161,16 @@ pub fn solve(mut matrix: BitMatrix) -> ZbResult<Gf2Solution> {
 
 /// Build and solve from boolean coefficient rows plus RHS.
 pub fn solve_rows(coeffs: &[Vec<bool>], rhs: &[bool]) -> ZbResult<Gf2Solution> {
+    solve_rows_with_cancel(coeffs, rhs, &CancelToken::new())
+}
+
+/// [`solve_rows`] with cooperative cancel checks during elimination.
+pub fn solve_rows_with_cancel(
+    coeffs: &[Vec<bool>],
+    rhs: &[bool],
+    cancel: &CancelToken,
+) -> ZbResult<Gf2Solution> {
+    cancel.check()?;
     if coeffs.len() != rhs.len() {
         return Err(ZbError::new(
             ErrorCode::Internal,
@@ -167,6 +186,7 @@ pub fn solve_rows(coeffs: &[Vec<bool>], rhs: &[bool]) -> ZbResult<Gf2Solution> {
     }
     let mut matrix = BitMatrix::zeros(coeffs.len(), cols);
     for (r, row) in coeffs.iter().enumerate() {
+        cancel.check()?;
         for (c, bit) in row.iter().enumerate() {
             if *bit {
                 matrix.set(r, c);
@@ -176,5 +196,5 @@ pub fn solve_rows(coeffs: &[Vec<bool>], rhs: &[bool]) -> ZbResult<Gf2Solution> {
             matrix.set(r, cols);
         }
     }
-    solve(matrix)
+    solve_with_cancel(matrix, cancel)
 }
