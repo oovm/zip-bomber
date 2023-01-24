@@ -4,7 +4,10 @@ use std::io::Write;
 
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
-use zb_solver::{crc32, crc32_shared_columns, solve_rows, CrcByteSlot};
+use zb_solver::{
+    crc32, crc32_shared_columns, solve_crc_identity_blocks, CrcByteSlot, SolveOutcome,
+    SolverBudget,
+};
 use zb_types::{
     Artifact, ArtifactId, ArtifactSet, ContainerKind, GenerateReport, GenerateRequest, PayloadSpec,
     ZbError, ZbResult, ZIP_PROFILE_V0,
@@ -276,17 +279,35 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
         })
         .collect();
     let (constant, columns) = crc32_shared_columns(&archive, &slots, 4)?;
-    let mut coeffs = vec![vec![false; 32]; 32];
-    let rhs = zb_solver::u32_to_bits(constant);
-    for row in 0..32 {
-        for bit in 0..32 {
-            coeffs[row][bit] = ((columns[bit] >> row) & 1) != 0;
-        }
-        coeffs[row][row] ^= true;
-    }
-    let solution = solve_rows(&coeffs, &rhs)?;
+    let outcome = solve_crc_identity_blocks(
+        &[(constant, columns.as_slice())],
+        32,
+        SolverBudget::default(),
+        Some("quine.crc.shared/v1".into()),
+    );
+    let SolveOutcome::Sat {
+        assignment,
+        evidence,
+        ..
+    } = outcome
+    else {
+        return Err(match outcome {
+            SolveOutcome::Unsat { message, .. } => ZbError {
+                category: zb_types::ErrorCategory::ConstraintUnsatisfied,
+                code: zb_types::ErrorCode::Internal,
+                message: format!("quine CRC residual unsat: {message}"),
+            },
+            SolveOutcome::ResourceLimited { message } => ZbError::resource_limited(message),
+            SolveOutcome::InvalidProblem { message }
+            | SolveOutcome::InternalError { message }
+            | SolveOutcome::Cancelled { message } => {
+                ZbError::new(zb_types::ErrorCode::Internal, message)
+            }
+            SolveOutcome::Sat { .. } => unreachable!(),
+        });
+    };
     let mut crc = 0u32;
-    for (bit, value) in solution.assignment.iter().enumerate() {
+    for (bit, value) in assignment.bits.iter().enumerate() {
         if *value {
             crc |= 1u32 << bit;
         }
@@ -357,7 +378,7 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
             ),
             format!(
                 "crc_rank={}; requested_crc={}; shared_crc_occurrences=4; length_candidates={}",
-                solution.rank,
+                evidence.rank,
                 request.crc_strategy.as_str(),
                 stream.length_candidates
             ),

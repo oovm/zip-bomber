@@ -168,6 +168,87 @@ impl ConstraintProblem {
     }
 }
 
+/// Build the stacked CRC residual system `(I XOR M) x = b`.
+///
+/// Each block contributes 32 equations. `columns[j]` bit `i` is `M[i][j]` for
+/// that block's rows. Identity is XORed onto columns
+/// `[block_index * 32 .. block_index * 32 + 32)` so each block owns its CRC
+/// word. `variable_bits` is the shared column width (32 for Quine, 64 for
+/// two-node Loopy).
+pub fn crc_identity_residual_problem(
+    blocks: &[(u32, &[u32])],
+    variable_bits: u32,
+    budget: SolverBudget,
+    problem_digest: Option<String>,
+) -> Result<ConstraintProblem, SolveOutcome> {
+    if variable_bits == 0 {
+        return Err(SolveOutcome::InvalidProblem {
+            message: "variable_bits must be positive".into(),
+        });
+    }
+    let mut equations = Vec::with_capacity(blocks.len().saturating_mul(32));
+    let mut eq_id = 0u32;
+    for (block_index, (constant, columns)) in blocks.iter().enumerate() {
+        if columns.len() != variable_bits as usize {
+            return Err(SolveOutcome::InvalidProblem {
+                message: format!(
+                    "CRC block {block_index} has {} columns, expected {variable_bits}",
+                    columns.len()
+                ),
+            });
+        }
+        let col_base = block_index * 32;
+        if col_base + 32 > variable_bits as usize {
+            return Err(SolveOutcome::InvalidProblem {
+                message: format!(
+                    "CRC block {block_index} identity cols [{col_base}..{}) exceed variable_bits {variable_bits}",
+                    col_base + 32
+                ),
+            });
+        }
+        for row in 0..32 {
+            let mut vars = Vec::new();
+            for bit in 0..variable_bits as usize {
+                if (columns[bit] >> row) & 1 != 0 {
+                    vars.push(VariableId(bit as u32));
+                }
+            }
+            // Identity column for this CRC bit.
+            let identity = VariableId((col_base + row) as u32);
+            if let Some(pos) = vars.iter().position(|v| *v == identity) {
+                vars.remove(pos);
+            } else {
+                vars.push(identity);
+            }
+            equations.push(LinearEquation {
+                id: EquationId(eq_id),
+                variables: vars,
+                rhs: (constant >> row) & 1 != 0,
+            });
+            eq_id += 1;
+        }
+    }
+    Ok(ConstraintProblem {
+        variable_count: variable_bits,
+        equations,
+        budget,
+        problem_digest,
+    })
+}
+
+/// Convenience: build [`crc_identity_residual_problem`] then [`solve_problem`].
+pub fn solve_crc_identity_blocks(
+    blocks: &[(u32, &[u32])],
+    variable_bits: u32,
+    budget: SolverBudget,
+    problem_digest: Option<String>,
+) -> SolveOutcome {
+    match crc_identity_residual_problem(blocks, variable_bits, budget, problem_digest) {
+        Ok(problem) => solve_problem(&problem),
+        Err(outcome) => outcome,
+    }
+}
+
 /// Solve a validated [`ConstraintProblem`].
 ///
 /// Returns a structured [`SolveOutcome`] instead of mapping every failure through

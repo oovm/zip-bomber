@@ -16,7 +16,8 @@ pub use crc::{
 };
 pub use gf2::{solve, solve_rows, BitMatrix, Gf2Solution};
 pub use problem::{
-    solve_problem, ConstraintProblem, LinearEquation, SolveEvidence, SolveOutcome, SolverBudget,
+    crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ConstraintProblem,
+    LinearEquation, SolveEvidence, SolveOutcome, SolverBudget,
 };
 
 /// Stable variable identity inside a frozen skeleton problem.

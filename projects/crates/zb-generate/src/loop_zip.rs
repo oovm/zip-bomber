@@ -2,7 +2,10 @@
 //! Codec construction follows the alternating program in DOI 10.3390/app14219797.
 use crate::templates::loopy::encode_loop;
 use crate::{emit_stored_archive, StoredMember};
-use zb_solver::{crc32, crc32_shared_columns, solve_rows, CrcByteSlot};
+use zb_solver::{
+    crc32, crc32_shared_columns, solve_crc_identity_blocks, CrcByteSlot, SolveOutcome,
+    SolverBudget,
+};
 use zb_types::{
     ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZbError,
     ZbResult, ZIP_LOOPY_TWO_NODE_GAPPED_V1,
@@ -291,20 +294,33 @@ pub(crate) fn generate(
     }
     let (ca, cols_a) = crc32_shared_columns(&a, &sa, 8)?;
     let (cb, cols_b) = crc32_shared_columns(&b, &sb, 8)?;
-    let mut matrix = vec![vec![false; 64]; 64];
-    let mut rhs = vec![false; 64];
-    for (index, (constant, columns)) in [(ca, cols_a), (cb, cols_b)].into_iter().enumerate() {
-        for row in 0..32 {
-            rhs[index * 32 + row] = (constant >> row) & 1 != 0;
-            for bit in 0..64 {
-                matrix[index * 32 + row][bit] = (columns[bit] >> row) & 1 != 0;
-            }
-            matrix[index * 32 + row][index * 32 + row] ^= true;
-        }
-    }
-    let solution = solve_rows(&matrix, &rhs)?;
+    let outcome = solve_crc_identity_blocks(
+        &[(ca, cols_a.as_slice()), (cb, cols_b.as_slice())],
+        64,
+        SolverBudget::default(),
+        Some("loopy.crc.shared/v1".into()),
+    );
+    let SolveOutcome::Sat {
+        assignment,
+        evidence,
+        ..
+    } = outcome
+    else {
+        return Err(match outcome {
+            SolveOutcome::Unsat { message, .. } => ZbError {
+                category: zb_types::ErrorCategory::ConstraintUnsatisfied,
+                code: ErrorCode::Internal,
+                message: format!("loopy CRC residual unsat: {message}"),
+            },
+            SolveOutcome::ResourceLimited { message } => ZbError::resource_limited(message),
+            SolveOutcome::InvalidProblem { message }
+            | SolveOutcome::InternalError { message }
+            | SolveOutcome::Cancelled { message } => ZbError::new(ErrorCode::Internal, message),
+            SolveOutcome::Sat { .. } => unreachable!(),
+        });
+    };
     let mut values = [0u8; 8];
-    for (bit, value) in solution.assignment.iter().enumerate() {
+    for (bit, value) in assignment.bits.iter().enumerate() {
         if *value {
             values[bit / 8] |= 1 << (bit % 8)
         }
@@ -352,8 +368,8 @@ pub(crate) fn generate(
         ordinary_members,
         quote_window: QUOTE_WINDOW as u64,
         ordinary_widths,
-        crc_rank: solution.rank as u32,
-        crc_free_bits: (64u32).saturating_sub(solution.rank as u32),
+        crc_rank: evidence.rank as u32,
+        crc_free_bits: evidence.free_bits as u32,
         edges: vec![
             LoopyEdgeFact {
                 from: states[0],

@@ -1,6 +1,6 @@
 use zb_solver::{
-    solve_problem, ConstraintProblem, EquationId, LinearEquation, SolveOutcome, SolverBudget,
-    VariableId,
+    crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ConstraintProblem,
+    EquationId, LinearEquation, SolveOutcome, SolverBudget, VariableId,
 };
 
 fn eq(id: u32, vars: &[u32], rhs: bool) -> LinearEquation {
@@ -103,6 +103,53 @@ fn rejects_out_of_range_variable() {
     match solve_problem(&problem) {
         SolveOutcome::InvalidProblem { message } => {
             assert!(message.contains("outside"));
+        }
+        other => panic!("expected InvalidProblem, got {other:?}"),
+    }
+}
+
+#[test]
+fn crc_identity_residual_matches_manual_i_xor_m() {
+    // M = 0, so equations are just x_i = b_i for a 32-bit word.
+    let columns = vec![0u32; 32];
+    let constant = 0xA5A5_5A5A_u32;
+    let outcome = solve_crc_identity_blocks(
+        &[(constant, columns.as_slice())],
+        32,
+        SolverBudget::default(),
+        Some("crc-id".into()),
+    );
+    match outcome {
+        SolveOutcome::Sat {
+            assignment,
+            unique,
+            evidence,
+        } => {
+            assert!(unique);
+            assert_eq!(evidence.rank, 32);
+            let mut value = 0u32;
+            for (bit, on) in assignment.bits.iter().enumerate() {
+                if *on {
+                    value |= 1 << bit;
+                }
+            }
+            assert_eq!(value, constant);
+        }
+        other => panic!("expected Sat, got {other:?}"),
+    }
+}
+
+#[test]
+fn crc_identity_rejects_short_column_block() {
+    let columns = vec![0u32; 16];
+    match crc_identity_residual_problem(
+        &[(0, columns.as_slice())],
+        32,
+        SolverBudget::default(),
+        None,
+    ) {
+        Err(SolveOutcome::InvalidProblem { message }) => {
+            assert!(message.contains("expected 32"));
         }
         other => panic!("expected InvalidProblem, got {other:?}"),
     }
