@@ -160,20 +160,70 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
     })
 }
 
-/// Verify an [`ArtifactSet`] root artifact.
+/// Verify every artifact in an [`ArtifactSet`], plus root / logical map integrity.
+///
+/// Living `03` / `07`: Loopy and Bomb return multi-artifact sets; verifying only
+/// the root would miss sibling archives that encode the cycle or nesting.
 pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
+    if set.artifacts.is_empty() {
+        return Err(ZbError::new(
+            zb_types::ErrorCode::InvalidTopology,
+            "artifact set has no artifacts to verify",
+        ));
+    }
     let root = set
         .artifacts
         .iter()
         .find(|a| a.id == set.root)
-        .or_else(|| set.artifacts.first());
-    match root {
-        Some(artifact) => verify_zip_bytes(&artifact.bytes),
-        None => Err(ZbError::new(
-            zb_types::ErrorCode::InvalidTopology,
-            "artifact set has no root bytes to verify",
-        )),
+        .ok_or_else(|| {
+            ZbError::new(
+                zb_types::ErrorCode::InvalidTopology,
+                format!("artifact set root `{}` is missing from artifacts", set.root.0),
+            )
+        })?;
+
+    let ids: std::collections::BTreeSet<&str> =
+        set.artifacts.iter().map(|a| a.id.0.as_str()).collect();
+    for entry in &set.logical_node_map {
+        let Some((_, id)) = entry.rsplit_once('=') else {
+            return Err(ZbError::new(
+                zb_types::ErrorCode::InvalidTopology,
+                format!("logical_node_map entry `{entry}` is not `label=id`"),
+            ));
+        };
+        if !ids.contains(id) {
+            return Err(ZbError::new(
+                zb_types::ErrorCode::InvalidTopology,
+                format!("logical_node_map references unknown artifact id `{id}`"),
+            ));
+        }
     }
+
+    let mut notes = Vec::new();
+    notes.push(format!("artifact_count={}", set.artifacts.len()));
+    notes.push(format!("root={}", root.id.0));
+    notes.push(format!("logical_node_map_entries={}", set.logical_node_map.len()));
+
+    let mut acorn = AcornZipCapability::observed();
+    for artifact in &set.artifacts {
+        let report = verify_zip_bytes(&artifact.bytes)?;
+        acorn = report.acorn;
+        notes.push(format!(
+            "artifact=`{}` bytes={} ok",
+            artifact.id.0,
+            artifact.bytes.len()
+        ));
+        for note in report.notes {
+            notes.push(format!("{}: {note}", artifact.id.0));
+        }
+    }
+
+    Ok(VerificationReport {
+        ok: true,
+        acorn,
+        missing_capabilities: Vec::new(),
+        notes,
+    })
 }
 
 fn is_empty_zip(bytes: &[u8]) -> bool {
