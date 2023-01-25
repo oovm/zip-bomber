@@ -5,6 +5,7 @@
 mod artifact;
 mod capability;
 mod container;
+mod decimal;
 mod error;
 mod graph;
 mod outcome;
@@ -16,6 +17,7 @@ mod variant;
 mod wire;
 
 pub use artifact::{Artifact, ArtifactId, ArtifactSet, DecimalU64};
+pub use decimal::{format_decimal_u64, parse_decimal_u64};
 pub use capability::{CapabilityEntry, CapabilitySet, CapabilityStatus, TopologyClass};
 pub use container::ContainerKind;
 pub use error::{ErrorCategory, ErrorCode, ZbError, ZbResult};
@@ -34,5 +36,5 @@ pub use topology::{AlignmentPolicy, ArchiveEdge, EdgeRole, NodeId, TopologyGraph
 pub use variant::{VariantKind, ALL_VARIANTS};
 pub use wire::{
     decode_base64, encode_base64, generate_request_from_json, generate_request_to_json,
-    WireArchiveEdge, WireGenerateRequest, WirePayloadSpec, WireTopologyGraph,
+    WireArchiveEdge, WireGenerateLimits, WireGenerateRequest, WirePayloadSpec, WireTopologyGraph,
 };

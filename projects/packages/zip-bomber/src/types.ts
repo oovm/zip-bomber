@@ -163,11 +163,20 @@ export type ZipBomberApi = {
 export type BuildDiagnostic = { code: string; message: string; node?: number; archivePath?: string };
 export type BuildOutcome<T> = { ok: true; value: T; diagnostics: BuildDiagnostic[] } |
     { ok: false; error: ZbError; diagnostics: BuildDiagnostic[] };
+/** Public generate budgets. u64 fields are `DecimalU64` strings (Living `04`). */
 export type GenerateLimits = {
-    max_nodes: number; max_edges: number; max_members: number;
-    max_input_bytes: number; max_artifact_bytes: number; max_total_artifact_bytes: number;
-    max_decoded_bytes: number; max_depth: number; max_template_candidates: number;
-    max_constraint_bits: number; max_solver_operations: number; max_live_memory_bytes: number;
+    maxNodes: number;
+    maxEdges: number;
+    maxMembers: number;
+    maxInputBytes: DecimalU64;
+    maxArtifactBytes: DecimalU64;
+    maxTotalArtifactBytes: DecimalU64;
+    maxDecodedBytes: DecimalU64;
+    maxDepth: number;
+    maxTemplateCandidates: number;
+    maxConstraintBits: DecimalU64;
+    maxSolverOperations: DecimalU64;
+    maxLiveMemoryBytes: DecimalU64;
 };
 export type BuildOptions = { profile?: string; limits?: Partial<GenerateLimits> };
 declare const graphSpecBrand: unique symbol;

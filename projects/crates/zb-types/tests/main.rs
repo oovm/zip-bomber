@@ -94,6 +94,39 @@ fn capability_matrix_profiles_and_verified_gates() {
 }
 
 #[test]
+fn wire_limits_use_decimal_u64_strings() {
+    let json = r#"{
+        "schema":"zb.request/v2",
+        "container":"zip",
+        "variant":"quine",
+        "limits":{
+            "maxDecodedBytes":"1048576",
+            "max_nodes":8,
+            "maxConstraintBits":"65536"
+        }
+    }"#;
+    let request = generate_request_from_json(json).expect("wire decode");
+    assert_eq!(request.limits.max_decoded_bytes, 1_048_576);
+    assert_eq!(request.limits.max_nodes, 8);
+    assert_eq!(request.limits.max_constraint_bits, 65_536);
+    // Unspecified fields keep small-sample defaults.
+    assert_eq!(request.limits.max_edges, 256);
+
+    let encoded = generate_request_to_json(&request).expect("wire encode");
+    assert!(encoded.contains("\"maxDecodedBytes\":\"1048576\""));
+    assert!(encoded.contains("\"maxNodes\":8"));
+    assert!(!encoded.contains("\"max_decoded_bytes\""));
+
+    let bad = r#"{
+        "schema":"zb.request/v2",
+        "container":"zip",
+        "variant":"quine",
+        "limits":{"maxDecodedBytes":"01"}
+    }"#;
+    assert!(generate_request_from_json(bad).is_err());
+}
+
+#[test]
 fn wire_json_maps_self_member_path_and_base64_payloads() {
     let json = r#"{
         "schema":"zb.request/v2",

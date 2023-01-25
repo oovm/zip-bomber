@@ -1,11 +1,11 @@
 //! Wire DTOs for Node / WASM JSON request transport.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    zip_layout, AlignmentPolicy, ArchiveEdge, ContainerKind, CrcStrategy, FractalSpec,
-    GenerateLimits, GenerateRequest, NodeId, PayloadSpec, TopologyGraph, VariantKind, ZbError,
-    ZbResult, REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
+    format_decimal_u64, parse_decimal_u64, zip_layout, AlignmentPolicy, ArchiveEdge, ContainerKind,
+    CrcStrategy, FractalSpec, GenerateLimits, GenerateRequest, NodeId, PayloadSpec, TopologyGraph,
+    VariantKind, ZbError, ZbResult, REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
 };
 
 /// Wire payload: archive path plus base64 or raw byte array.
@@ -87,15 +87,188 @@ pub struct WireGenerateRequest {
     /// Profile id.
     #[serde(default = "default_profile")]
     pub profile: String,
-    /// Optional limits overlay.
+    /// Optional limits overlay (`DecimalU64` strings for large budgets on the wire).
     #[serde(default)]
-    pub limits: Option<GenerateLimits>,
+    pub limits: Option<WireGenerateLimits>,
     /// CRC strategy.
     #[serde(default)]
     pub crc_strategy: Option<CrcStrategy>,
     /// Soft extra budget.
     #[serde(default)]
     pub extra_budget: Option<u32>,
+}
+
+/// Wire form of [`GenerateLimits`]. Large budgets use decimal strings (Living `04`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct WireGenerateLimits {
+    /// Max topology nodes.
+    #[serde(default, rename = "maxNodes", alias = "max_nodes")]
+    pub max_nodes: Option<u32>,
+    /// Max topology edges.
+    #[serde(default, rename = "maxEdges", alias = "max_edges")]
+    pub max_edges: Option<u32>,
+    /// Max members per archive.
+    #[serde(default, rename = "maxMembers", alias = "max_members")]
+    pub max_members: Option<u32>,
+    /// Max total input payload bytes.
+    #[serde(
+        default,
+        rename = "maxInputBytes",
+        alias = "max_input_bytes",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_input_bytes: Option<u64>,
+    /// Max single artifact bytes.
+    #[serde(
+        default,
+        rename = "maxArtifactBytes",
+        alias = "max_artifact_bytes",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_artifact_bytes: Option<u64>,
+    /// Max sum of artifact bytes.
+    #[serde(
+        default,
+        rename = "maxTotalArtifactBytes",
+        alias = "max_total_artifact_bytes",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_total_artifact_bytes: Option<u64>,
+    /// Max decode budget for verification unfold.
+    #[serde(
+        default,
+        rename = "maxDecodedBytes",
+        alias = "max_decoded_bytes",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_decoded_bytes: Option<u64>,
+    /// Max nesting / fractal depth.
+    #[serde(default, rename = "maxDepth", alias = "max_depth")]
+    pub max_depth: Option<u32>,
+    /// Max outer template candidates.
+    #[serde(default, rename = "maxTemplateCandidates", alias = "max_template_candidates")]
+    pub max_template_candidates: Option<u32>,
+    /// Max GF(2) constraint bits.
+    #[serde(
+        default,
+        rename = "maxConstraintBits",
+        alias = "max_constraint_bits",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_constraint_bits: Option<u64>,
+    /// Max solver word operations.
+    #[serde(
+        default,
+        rename = "maxSolverOperations",
+        alias = "max_solver_operations",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_solver_operations: Option<u64>,
+    /// Max live working memory.
+    #[serde(
+        default,
+        rename = "maxLiveMemoryBytes",
+        alias = "max_live_memory_bytes",
+        serialize_with = "ser_opt_decimal_u64",
+        deserialize_with = "de_opt_decimal_u64"
+    )]
+    pub max_live_memory_bytes: Option<u64>,
+}
+
+impl WireGenerateLimits {
+    /// Overlay onto small-sample defaults.
+    pub fn into_limits(self) -> ZbResult<GenerateLimits> {
+        let mut limits = GenerateLimits::small_sample();
+        if let Some(v) = self.max_nodes {
+            limits.max_nodes = v;
+        }
+        if let Some(v) = self.max_edges {
+            limits.max_edges = v;
+        }
+        if let Some(v) = self.max_members {
+            limits.max_members = v;
+        }
+        if let Some(v) = self.max_input_bytes {
+            limits.max_input_bytes = v;
+        }
+        if let Some(v) = self.max_artifact_bytes {
+            limits.max_artifact_bytes = v;
+        }
+        if let Some(v) = self.max_total_artifact_bytes {
+            limits.max_total_artifact_bytes = v;
+        }
+        if let Some(v) = self.max_decoded_bytes {
+            limits.max_decoded_bytes = v;
+        }
+        if let Some(v) = self.max_depth {
+            limits.max_depth = v;
+        }
+        if let Some(v) = self.max_template_candidates {
+            limits.max_template_candidates = v;
+        }
+        if let Some(v) = self.max_constraint_bits {
+            limits.max_constraint_bits = v;
+        }
+        if let Some(v) = self.max_solver_operations {
+            limits.max_solver_operations = v;
+        }
+        if let Some(v) = self.max_live_memory_bytes {
+            limits.max_live_memory_bytes = v;
+        }
+        Ok(limits)
+    }
+
+    /// Capture a core limits snapshot for JSON wire emission.
+    pub fn from_limits(limits: &GenerateLimits) -> Self {
+        Self {
+            max_nodes: Some(limits.max_nodes),
+            max_edges: Some(limits.max_edges),
+            max_members: Some(limits.max_members),
+            max_input_bytes: Some(limits.max_input_bytes),
+            max_artifact_bytes: Some(limits.max_artifact_bytes),
+            max_total_artifact_bytes: Some(limits.max_total_artifact_bytes),
+            max_decoded_bytes: Some(limits.max_decoded_bytes),
+            max_depth: Some(limits.max_depth),
+            max_template_candidates: Some(limits.max_template_candidates),
+            max_constraint_bits: Some(limits.max_constraint_bits),
+            max_solver_operations: Some(limits.max_solver_operations),
+            max_live_memory_bytes: Some(limits.max_live_memory_bytes),
+        }
+    }
+}
+
+fn ser_opt_decimal_u64<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(v) => serializer.serialize_str(&format_decimal_u64(*v)),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn de_opt_decimal_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Str(String),
+        Num(u64),
+        Null,
+    }
+    match Option::<Raw>::deserialize(deserializer)? {
+        None | Some(Raw::Null) => Ok(None),
+        Some(Raw::Num(v)) => Ok(Some(v)),
+        Some(Raw::Str(s)) => parse_decimal_u64(&s).map(Some).map_err(serde::de::Error::custom),
+    }
 }
 
 fn default_schema() -> String {
@@ -147,7 +320,7 @@ impl WireGenerateRequest {
         request.graph = self.graph;
         request.profile = self.profile;
         if let Some(limits) = self.limits {
-            request.limits = limits;
+            request.limits = limits.into_limits()?;
         }
         if let Some(crc) = self.crc_strategy {
             request.crc_strategy = crc;
@@ -339,7 +512,7 @@ pub fn generate_request_to_json(request: &GenerateRequest) -> ZbResult<String> {
             .collect(),
         fractal: request.fractal.clone(),
         profile: request.profile.clone(),
-        limits: Some(request.limits.clone()),
+        limits: Some(WireGenerateLimits::from_limits(&request.limits)),
         crc_strategy: Some(request.crc_strategy),
         extra_budget: Some(request.extra_budget),
     };
