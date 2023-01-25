@@ -1,0 +1,47 @@
+use zb_generate::{generate_with_cancel, CancelToken};
+use zb_types::{generate_request_from_json, ErrorCategory, GenerateRequest, VariantKind};
+
+#[test]
+fn pre_cancelled_quine_generate_returns_cancelled() {
+    let request = GenerateRequest::bare(VariantKind::Quine);
+    let token = CancelToken::new();
+    token.cancel();
+    match generate_with_cancel(request, &token) {
+        zb_types::Outcome::Err { error, .. } => {
+            assert_eq!(error.category, ErrorCategory::Cancelled);
+            assert_eq!(error.code.as_str(), "ZB_CANCELLED");
+        }
+        other => panic!("expected cancelled, got {other:?}"),
+    }
+}
+
+#[test]
+fn pre_cancelled_loopy_generate_returns_cancelled() {
+    let request = generate_request_from_json(
+        &serde_json::json!({
+            "schema":"zb.request/v2",
+            "variant":"loopy",
+            "profile":"zip.loopy-two-node.gapped/v1",
+            "graph":{"root":0,"mode":"recursive","nodes":[
+                {"members":[
+                    {"kind":"payload","path":"a.txt","bytes":"YWJj"},
+                    {"kind":"archive","path":"next/b.zip","target":1}
+                ]},
+                {"members":[
+                    {"kind":"payload","path":"b.txt","bytes":"ZGVm"},
+                    {"kind":"archive","path":"back/a.zip","target":0}
+                ]}
+            ]}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let token = CancelToken::new();
+    token.cancel();
+    match generate_with_cancel(request, &token) {
+        zb_types::Outcome::Err { error, .. } => {
+            assert_eq!(error.category, ErrorCategory::Cancelled);
+        }
+        other => panic!("expected cancelled, got {other:?}"),
+    }
+}

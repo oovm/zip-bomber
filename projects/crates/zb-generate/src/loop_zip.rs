@@ -3,8 +3,8 @@
 use crate::templates::loopy::encode_loop;
 use crate::{emit_stored_archive, StoredMember};
 use zb_solver::{
-    crc32, crc32_shared_columns, solve_crc_identity_blocks, CrcByteSlot, SolveOutcome,
-    SolverBudget,
+    crc32, crc32_shared_columns, solve_crc_identity_blocks_with_cancel, CancelToken, CrcByteSlot,
+    SolveOutcome, SolverBudget,
 };
 use zb_types::{
     ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZbError,
@@ -241,7 +241,9 @@ pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbRes
 pub(crate) fn generate(
     request: &GenerateRequest,
     states: &[usize],
+    cancel: &CancelToken,
 ) -> ZbResult<(Vec<(usize, Vec<u8>)>, LoopyFacts)> {
+    cancel.check()?;
     let measured = measure(request, states)?;
     let Measured {
         layouts,
@@ -294,11 +296,12 @@ pub(crate) fn generate(
     }
     let (ca, cols_a) = crc32_shared_columns(&a, &sa, 8)?;
     let (cb, cols_b) = crc32_shared_columns(&b, &sb, 8)?;
-    let outcome = solve_crc_identity_blocks(
+    let outcome = solve_crc_identity_blocks_with_cancel(
         &[(ca, cols_a.as_slice()), (cb, cols_b.as_slice())],
         64,
         SolverBudget::default(),
         Some("loopy.crc.shared/v1".into()),
+        cancel,
     );
     let SolveOutcome::Sat {
         assignment,
@@ -313,9 +316,9 @@ pub(crate) fn generate(
                 message: format!("loopy CRC residual unsat: {message}"),
             },
             SolveOutcome::ResourceLimited { message } => ZbError::resource_limited(message),
+            SolveOutcome::Cancelled { message } => ZbError::cancelled(message),
             SolveOutcome::InvalidProblem { message }
-            | SolveOutcome::InternalError { message }
-            | SolveOutcome::Cancelled { message } => ZbError::new(ErrorCode::Internal, message),
+            | SolveOutcome::InternalError { message } => ZbError::new(ErrorCode::Internal, message),
             SolveOutcome::Sat { .. } => unreachable!(),
         });
     };

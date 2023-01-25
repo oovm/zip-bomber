@@ -176,8 +176,23 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
 ///
 /// Template builds return an [`Outcome`] with `not_implemented` after topology validation.
 pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
+    generate_with_cancel(request, &CancelToken::new())
+}
+
+/// [`generate`] with cooperative cancel for Quine / Loopy CRC solve steps.
+pub fn generate_with_cancel(request: GenerateRequest, cancel: &CancelToken) -> Outcome<ArtifactSet> {
+    if let Err(err) = cancel.check() {
+        let report = GenerateReport::failed(
+            request.variant,
+            request.crc_strategy,
+            request.topology.nodes.len(),
+            request.topology.edges.len(),
+            &err,
+        );
+        return Outcome::err(err, report);
+    }
     if request.graph.is_some() {
-        return graph::generate(request);
+        return graph::generate_with_cancel(request, cancel);
     }
     if let Err(err) = validate::normalize(&request) {
         let report = GenerateReport::not_implemented(
@@ -206,7 +221,7 @@ pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
     let crc = request.crc_strategy;
     let nodes = request.topology.nodes.len();
     let edges = request.topology.edges.len();
-    match variants::dispatch(request) {
+    match variants::dispatch_with_cancel(request, cancel) {
         Ok(bundle) => {
             if bundle.report.status == zb_types::ReportStatus::NotImplemented {
                 Outcome::err(

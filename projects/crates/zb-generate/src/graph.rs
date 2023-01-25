@@ -2,6 +2,7 @@
 use crate::{emit_stored_archive, PlanSummary, StoredMember};
 use acorn_source::ByteSource;
 use std::collections::{BTreeMap, BTreeSet};
+use zb_solver::CancelToken;
 use zb_types::{
     ArchiveGraphMember as Member, ArchiveGraphSpec, Artifact, ArtifactId, ArtifactSet,
     ContainerKind, ErrorCode, FractalMode, GenerateReport, GenerateRequest, Outcome, PayloadSpec,
@@ -352,7 +353,8 @@ struct CompiledGraph {
     loopy: Option<zb_types::LoopyFacts>,
 }
 
-fn compile(request: &GenerateRequest) -> ZbResult<CompiledGraph> {
+fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<CompiledGraph> {
+    cancel.check()?;
     let (depth, components) = validate(request)?;
     supported(request, &components)?;
     let g = request.graph.as_ref().unwrap();
@@ -420,7 +422,7 @@ fn compile(request: &GenerateRequest) -> ZbResult<CompiledGraph> {
     } else {
         for c in components {
             if c.len() == 2 {
-                let (archives, facts) = crate::loop_zip::generate(request, &c)?;
+                let (archives, facts) = crate::loop_zip::generate(request, &c, cancel)?;
                 loopy_facts = Some(facts);
                 for (n, bytes) in archives {
                     save((n, 0), bytes, &mut compiled)?;
@@ -451,7 +453,7 @@ fn compile(request: &GenerateRequest) -> ZbResult<CompiledGraph> {
                         bytes: m.payload,
                     })
                     .collect();
-                crate::variants::quine::generate(r)?
+                crate::variants::quine::generate_with_cancel(r, cancel)?
                     .artifacts
                     .artifacts
                     .remove(0)
@@ -585,10 +587,18 @@ fn verify_members(bytes: &[u8], expected: &[StoredMember]) -> ZbResult<()> {
 
 /// Generate through the shared graph compiler.
 pub(crate) fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
+    generate_with_cancel(request, &CancelToken::new())
+}
+
+/// [`generate`] with a shared cancel token for SCC / Quine CRC steps.
+pub(crate) fn generate_with_cancel(
+    request: GenerateRequest,
+    cancel: &CancelToken,
+) -> Outcome<ArtifactSet> {
     let g = request.graph.as_ref().unwrap();
     let nodes = g.nodes.len();
     let count = edges(g);
-    match compile(&request) {
+    match compile(&request, cancel) {
         Ok(CompiledGraph { set, loopy }) => {
             let total = set.artifacts.iter().map(|a| a.bytes.len() as u64).sum();
             let mut report = GenerateReport::ok(

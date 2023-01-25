@@ -5,8 +5,8 @@ use std::io::Write;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use zb_solver::{
-    crc32, crc32_shared_columns, solve_crc_identity_blocks, CrcByteSlot, SolveOutcome,
-    SolverBudget,
+    crc32, crc32_shared_columns, solve_crc_identity_blocks_with_cancel, CancelToken, CrcByteSlot,
+    SolveOutcome, SolverBudget,
 };
 use zb_types::{
     Artifact, ArtifactId, ArtifactSet, ContainerKind, GenerateReport, GenerateRequest, PayloadSpec,
@@ -40,6 +40,15 @@ struct OrdinaryMember {
 
 /// Generate a quine archive by enumerating verified templates.
 pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
+    generate_with_cancel(request, &CancelToken::new())
+}
+
+/// [`generate`] with cooperative cancel checks around CRC solve steps.
+pub fn generate_with_cancel(
+    request: GenerateRequest,
+    cancel: &CancelToken,
+) -> ZbResult<ArtifactBundle> {
+    cancel.check()?;
     let profile = if request.profile.is_empty() {
         ZIP_PROFILE_V0
     } else {
@@ -54,7 +63,8 @@ pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
 
     let mut attempts = Vec::new();
     for meta in &candidates {
-        match try_template(&request, meta) {
+        cancel.check()?;
+        match try_template(&request, meta, cancel) {
             Ok(bundle) => return Ok(bundle),
             Err(err)
                 if matches!(
@@ -145,7 +155,11 @@ pub struct QuineLayoutPlan {
     pub suffix_budget_remaining: usize,
 }
 
-fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult<ArtifactBundle> {
+fn try_template(
+    request: &GenerateRequest,
+    meta: &QuineTemplateMeta,
+    cancel: &CancelToken,
+) -> ZbResult<ArtifactBundle> {
     if meta.id != "quine.stored-fixed.prefix-suffix" {
         return Err(ZbError::not_implemented("unknown quine template"));
     }
@@ -279,11 +293,12 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
         })
         .collect();
     let (constant, columns) = crc32_shared_columns(&archive, &slots, 4)?;
-    let outcome = solve_crc_identity_blocks(
+    let outcome = solve_crc_identity_blocks_with_cancel(
         &[(constant, columns.as_slice())],
         32,
         SolverBudget::default(),
         Some("quine.crc.shared/v1".into()),
+        cancel,
     );
     let SolveOutcome::Sat {
         assignment,
@@ -298,9 +313,9 @@ fn try_template(request: &GenerateRequest, meta: &QuineTemplateMeta) -> ZbResult
                 message: format!("quine CRC residual unsat: {message}"),
             },
             SolveOutcome::ResourceLimited { message } => ZbError::resource_limited(message),
+            SolveOutcome::Cancelled { message } => ZbError::cancelled(message),
             SolveOutcome::InvalidProblem { message }
-            | SolveOutcome::InternalError { message }
-            | SolveOutcome::Cancelled { message } => {
+            | SolveOutcome::InternalError { message } => {
                 ZbError::new(zb_types::ErrorCode::Internal, message)
             }
             SolveOutcome::Sat { .. } => unreachable!(),

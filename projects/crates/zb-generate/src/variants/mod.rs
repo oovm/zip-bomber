@@ -5,6 +5,7 @@ mod fractal;
 mod loopy;
 pub(crate) mod quine;
 
+use zb_solver::CancelToken;
 use zb_types::{ArtifactSet, GenerateReport, GenerateRequest, VariantKind, ZbResult};
 
 /// Generated archive set plus report.
@@ -18,9 +19,17 @@ pub struct ArtifactBundle {
 
 /// Dispatch to the variant driver.
 pub fn dispatch(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
+    dispatch_with_cancel(request, &CancelToken::new())
+}
+
+/// [`dispatch`] with cooperative cancel for Quine CRC solve steps.
+pub fn dispatch_with_cancel(
+    request: GenerateRequest,
+    cancel: &CancelToken,
+) -> ZbResult<ArtifactBundle> {
     match request.variant {
         VariantKind::Bomb => bomb::generate(request),
-        VariantKind::Quine => quine::generate(request),
+        VariantKind::Quine => quine::generate_with_cancel(request, cancel),
         VariantKind::Loopy => loopy::generate(request),
         VariantKind::Fractal => fractal::generate(request),
     }
