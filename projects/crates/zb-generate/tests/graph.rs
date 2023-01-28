@@ -58,6 +58,18 @@ fn loopy_report_carries_structured_facts() {
     let request = request("loopy", "recursive", "zip.loopy-two-node.gapped/v1", None);
     match generate(request) {
         Outcome::Ok { report, .. } => {
+            assert_eq!(report.schema, zb_types::REPORT_SCHEMA_V2);
+            assert_eq!(
+                report.profile.as_deref(),
+                Some("zip.loopy-two-node.gapped/v1")
+            );
+            let solver = report.solver.expect("solver facts");
+            assert!(solver.rank > 0);
+            assert_eq!(solver.equations_used, 64);
+            assert_eq!(
+                solver.problem_digest.as_deref(),
+                Some("loopy.crc.shared/v1")
+            );
             let facts = report.loopy.expect("loopy facts");
             assert_eq!(facts.requested_nodes, 2);
             assert_eq!(facts.byte_period, 2);
@@ -66,7 +78,7 @@ fn loopy_report_carries_structured_facts() {
             assert_eq!(facts.quote_window, 16000);
             assert_eq!(facts.edges.len(), 2);
             assert!(facts.edges.iter().all(|e| e.bytes_equal));
-            assert!(facts.crc_rank > 0);
+            assert_eq!(facts.crc_rank, solver.rank);
             assert!(report.warnings.iter().all(|w| !w.contains("crc_rank")));
         }
         other => panic!("{other:?}"),

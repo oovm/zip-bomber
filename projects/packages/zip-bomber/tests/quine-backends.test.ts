@@ -13,6 +13,12 @@ test("native and WASM Quine generation, plan and verify are identical", async ()
         assert.ok(nativeResult.ok, JSON.stringify(nativeResult));
         assert.ok(wasmResult.ok, JSON.stringify(wasmResult));
         assert.deepEqual(nativeResult.report, wasmResult.report);
+        assert.equal(nativeResult.report.schema, "zb.report/v2");
+        assert.equal(nativeResult.report.profile, "zip.profile/v0-stub");
+        assert.ok(nativeResult.report.solver);
+        assert.ok(nativeResult.report.solver!.rank > 0);
+        assert.equal(nativeResult.report.solver!.equations_used, 32);
+        assert.equal(nativeResult.report.solver!.problem_digest, "quine.crc.shared/v1");
         const bytes = Buffer.from(nativeResult.value.artifacts[0].bytes);
         assert.deepEqual(bytes, Buffer.from(wasmResult.value.artifacts[0].bytes));
         const start = 30 + bytes.readUInt16LE(26) + bytes.readUInt16LE(28);

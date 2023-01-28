@@ -351,6 +351,7 @@ fn size_bound(list: &[StoredMember], request: &GenerateRequest) -> ZbResult<()> 
 struct CompiledGraph {
     set: ArtifactSet,
     loopy: Option<zb_types::LoopyFacts>,
+    solver: Option<zb_types::SolverFacts>,
 }
 
 fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<CompiledGraph> {
@@ -362,6 +363,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
     let mut total = 0u64;
     let mut decoded = 0u64;
     let mut loopy_facts = None;
+    let mut solver_facts = None;
     let mut save =
         |key, bytes: Vec<u8>, compiled: &mut BTreeMap<(usize, u32), Vec<u8>>| -> ZbResult<()> {
             total = total.saturating_add(bytes.len() as u64);
@@ -422,8 +424,9 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
     } else {
         for c in components {
             if c.len() == 2 {
-                let (archives, facts) = crate::loop_zip::generate(request, &c, cancel)?;
+                let (archives, facts, solver) = crate::loop_zip::generate(request, &c, cancel)?;
                 loopy_facts = Some(facts);
+                solver_facts = Some(solver);
                 for (n, bytes) in archives {
                     save((n, 0), bytes, &mut compiled)?;
                 }
@@ -527,6 +530,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
                 .collect(),
         },
         loopy: loopy_facts,
+        solver: solver_facts,
     })
 }
 
@@ -599,7 +603,7 @@ pub(crate) fn generate_with_cancel(
     let nodes = g.nodes.len();
     let count = edges(g);
     match compile(&request, cancel) {
-        Ok(CompiledGraph { set, loopy }) => {
+        Ok(CompiledGraph { set, loopy, solver }) => {
             let total = set.artifacts.iter().map(|a| a.bytes.len() as u64).sum();
             let mut report = GenerateReport::ok(
                 request.variant,
@@ -609,7 +613,11 @@ pub(crate) fn generate_with_cancel(
                 set.artifacts.iter().find(|a| a.id == set.root).unwrap().bytes.len() as u64,
                 total,
                 vec!["unified graph: every member independently decoded and byte-compared".into()],
-            );
+            )
+            .with_profile(request.profile.clone());
+            if let Some(facts) = solver {
+                report = report.with_solver(facts);
+            }
             if let Some(facts) = loopy {
                 report = report.with_loopy(facts);
             }

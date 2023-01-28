@@ -392,13 +392,18 @@ fn try_template(
                 layout.suffix_budget_remaining
             ),
             format!(
-                "crc_rank={}; requested_crc={}; shared_crc_occurrences=4; length_candidates={}",
-                evidence.rank,
-                request.crc_strategy.as_str(),
+                "shared_crc_occurrences=4; length_candidates={}",
                 stream.length_candidates
             ),
         ],
-    );
+    )
+    .with_profile(request.profile.clone())
+    .with_solver(zb_types::SolverFacts {
+        rank: evidence.rank as u32,
+        free_bits: evidence.free_bits as u32,
+        equations_used: evidence.equations_used as u32,
+        problem_digest: evidence.problem_digest.clone(),
+    });
     Ok(ArtifactBundle {
         artifacts: ArtifactSet {
             root: artifact_id.clone(),

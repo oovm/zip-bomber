@@ -27,7 +27,8 @@ pub use profile::{
     zip_layout, GenerateLimits, ZipProfile, ZIP_LOOPY_TWO_NODE_GAPPED_V1, ZIP_PROFILE_V0,
 };
 pub use report::{
-    GenerateReport, LoopyEdgeFact, LoopyFacts, ReportStatus, REPORT_SCHEMA_V1, REPORT_SCHEMA_V2,
+    GenerateReport, LoopyEdgeFact, LoopyFacts, ReportStatus, SolverFacts, REPORT_SCHEMA_V1,
+    REPORT_SCHEMA_V2,
 };
 pub use request::{
     CrcStrategy, FractalMode, FractalSpec, GenerateRequest, PayloadSpec, REQUEST_SCHEMA_V2,

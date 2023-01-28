@@ -42,7 +42,8 @@ pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
             built.root_bytes,
             built.logical_bytes,
             warnings,
-        ),
+        )
+        .with_profile(request.profile.clone()),
     })
 }
 

@@ -242,7 +242,7 @@ pub(crate) fn generate(
     request: &GenerateRequest,
     states: &[usize],
     cancel: &CancelToken,
-) -> ZbResult<(Vec<(usize, Vec<u8>)>, LoopyFacts)> {
+) -> ZbResult<(Vec<(usize, Vec<u8>)>, LoopyFacts, zb_types::SolverFacts)> {
     cancel.check()?;
     let measured = measure(request, states)?;
     let Measured {
@@ -394,5 +394,11 @@ pub(crate) fn generate(
             },
         ],
     };
-    Ok((vec![(states[0], a), (states[1], b)], facts))
+    let solver = zb_types::SolverFacts {
+        rank: evidence.rank as u32,
+        free_bits: evidence.free_bits as u32,
+        equations_used: evidence.equations_used as u32,
+        problem_digest: evidence.problem_digest.clone(),
+    };
+    Ok((vec![(states[0], a), (states[1], b)], facts, solver))
 }

@@ -61,17 +61,26 @@ export type LoopyFacts = {
     edges: LoopyEdgeFact[];
 };
 
+export type SolverFacts = {
+    rank: number;
+    free_bits: number;
+    equations_used: number;
+    problem_digest?: string | null;
+};
+
 export type GenerateReport = {
     schema: string;
     container: ContainerId;
     variant: VariantId;
     status: "ok" | "not_implemented" | "error";
+    profile?: string | null;
     topology_nodes: number;
     topology_edges: number;
     warnings: string[];
     error_code?: string | null;
     error_message?: string | null;
     crc_strategy?: string;
+    solver?: SolverFacts | null;
     loopy?: LoopyFacts | null;
 };
 

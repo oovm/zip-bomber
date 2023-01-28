@@ -14,7 +14,15 @@ fn generated_quine_is_complete_and_self_identical() {
     let request = GenerateRequest::bare(VariantKind::Quine);
     let set = match generate(request.clone()) {
         Outcome::Ok { value, report, .. } => {
-            println!("{:?}", report);
+            assert_eq!(report.schema, zb_types::REPORT_SCHEMA_V2);
+            assert_eq!(report.profile.as_deref(), Some(ZIP_PROFILE_V0));
+            let solver = report.solver.expect("solver facts");
+            assert!(solver.rank > 0);
+            assert_eq!(solver.equations_used, 32);
+            assert_eq!(
+                solver.problem_digest.as_deref(),
+                Some("quine.crc.shared/v1")
+            );
             value
         }
         Outcome::Err { error, .. } => panic!("quine generation failed: {error}"),

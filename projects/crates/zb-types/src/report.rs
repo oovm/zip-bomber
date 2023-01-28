@@ -1,13 +1,27 @@
-//! `zb.report/v1` (template) and `zb.report/v2` (design target) reports.
+//! `zb.report/v1` (template stubs) and `zb.report/v2` (successful emits).
 
 use serde::{Deserialize, Serialize};
 
 use crate::{ContainerKind, CrcStrategy, VariantKind};
 
-/// Legacy template report schema.
+/// Legacy template report schema (stubs / not_implemented / early errors).
 pub const REPORT_SCHEMA_V1: &str = "zb.report/v1";
-/// Design-target report schema (fields freeze before algorithm gates).
+/// Frozen success-path report schema (Living `03` / `04` minimal v2).
 pub const REPORT_SCHEMA_V2: &str = "zb.report/v2";
+
+/// Compact solver evidence mirrored from `zb-solver::SolveEvidence`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolverFacts {
+    /// Matrix rank after elimination.
+    pub rank: u32,
+    /// Free bits under the free-variable = 0 policy.
+    pub free_bits: u32,
+    /// Equation count accepted into the matrix.
+    pub equations_used: u32,
+    /// Optional opaque digest of the frozen skeleton.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem_digest: Option<String>,
+}
 
 /// One directed cycle edge after independent inflate / CRC checks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,7 +91,7 @@ impl ReportStatus {
 /// Structured generation report shared by CLI / N-API / WASM.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerateReport {
-    /// Schema id (`zb.report/v1` during template; migrate to v2 when frozen).
+    /// Schema id (`zb.report/v2` on successful emits; `v1` for stubs).
     pub schema: String,
     /// Container.
     pub container: ContainerKind,
@@ -85,6 +99,9 @@ pub struct GenerateReport {
     pub variant: VariantKind,
     /// Outcome status.
     pub status: ReportStatus,
+    /// Construction profile id when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
     /// Node count in the topology.
     pub topology_nodes: usize,
     /// Edge count in the topology.
@@ -103,6 +120,9 @@ pub struct GenerateReport {
     pub error_code: Option<String>,
     /// Human error message when failed.
     pub error_message: Option<String>,
+    /// Solver evidence when a fixed skeleton CRC / bit problem was solved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solver: Option<SolverFacts>,
     /// Structured Loopy facts when a two-node gapped cycle was constructed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loopy: Option<LoopyFacts>,
@@ -121,6 +141,7 @@ impl GenerateReport {
             container: ContainerKind::Zip,
             variant,
             status: ReportStatus::NotImplemented,
+            profile: None,
             topology_nodes: nodes,
             topology_edges: edges,
             output_path: None,
@@ -134,11 +155,12 @@ impl GenerateReport {
             error_message: Some(format!(
                 "variant `{variant}` is recognized but not implemented"
             )),
+            solver: None,
             loopy: None,
         }
     }
 
-    /// Successful emit report.
+    /// Successful emit report (`zb.report/v2`).
     pub fn ok(
         variant: VariantKind,
         crc: CrcStrategy,
@@ -149,10 +171,11 @@ impl GenerateReport {
         warnings: Vec<String>,
     ) -> Self {
         Self {
-            schema: REPORT_SCHEMA_V1.to_string(),
+            schema: REPORT_SCHEMA_V2.to_string(),
             container: ContainerKind::Zip,
             variant,
             status: ReportStatus::Ok,
+            profile: None,
             topology_nodes: nodes,
             topology_edges: edges,
             output_path: None,
@@ -162,6 +185,7 @@ impl GenerateReport {
             warnings,
             error_code: None,
             error_message: None,
+            solver: None,
             loopy: None,
         }
     }
@@ -179,6 +203,7 @@ impl GenerateReport {
             container: ContainerKind::Zip,
             variant,
             status: ReportStatus::Error,
+            profile: None,
             topology_nodes: nodes,
             topology_edges: edges,
             output_path: None,
@@ -188,8 +213,21 @@ impl GenerateReport {
             warnings: Vec::new(),
             error_code: Some(err.code.as_str().to_string()),
             error_message: Some(err.message.clone()),
+            solver: None,
             loopy: None,
         }
+    }
+
+    /// Attach the active construction profile id.
+    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile = Some(profile.into());
+        self
+    }
+
+    /// Attach solver evidence without mutating warnings.
+    pub fn with_solver(mut self, facts: SolverFacts) -> Self {
+        self.solver = Some(facts);
+        self
     }
 
     /// Attach structured Loopy facts without mutating warnings.

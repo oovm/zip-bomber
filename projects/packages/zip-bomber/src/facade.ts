@@ -180,12 +180,14 @@ function parseReport(reportJson: string, fallback: VariantId): GenerateReport {
             container: "zip",
             variant: (parsed.variant as VariantId) ?? fallback,
             status: parsed.status ?? "error",
+            profile: parsed.profile ?? undefined,
             topology_nodes: parsed.topology_nodes ?? 0,
             topology_edges: parsed.topology_edges ?? 0,
             warnings: parsed.warnings ?? [],
             error_code: parsed.error_code,
             error_message: parsed.error_message,
             crc_strategy: parsed.crc_strategy,
+            solver: parsed.solver ?? undefined,
             loopy: parsed.loopy ?? undefined,
         };
     } catch {
