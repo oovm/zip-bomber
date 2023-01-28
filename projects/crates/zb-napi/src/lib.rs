@@ -5,7 +5,8 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use zb_generate::{
-    capabilities, generate, list_variants, plan_generate, report_json, verify_zip_bytes,
+    capabilities, generate_with_cancel, list_variants, plan_generate, report_json, verify_zip_bytes,
+    CancelToken,
 };
 use zb_types::{generate_request_from_json, GenerateRequest, Outcome, ReportStatus, VariantKind};
 
@@ -178,7 +179,14 @@ fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
 }
 
 fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
-    match generate(request) {
+    generate_response_with_cancel(request, &CancelToken::new())
+}
+
+fn generate_response_with_cancel(
+    request: GenerateRequest,
+    cancel: &CancelToken,
+) -> Result<GenerateResponse> {
+    match generate_with_cancel(request, cancel) {
         Outcome::Ok { value, report, .. } => {
             let report_json =
                 report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
@@ -302,4 +310,63 @@ pub fn generate_request_json(request_json: String) -> Result<GenerateResponse> {
     let request = generate_request_from_json(&request_json)
         .map_err(|err| Error::from_reason(err.to_string()))?;
     generate_response(request)
+}
+
+/// Cooperative cancel flag shared with a libuv-pool generate task.
+#[napi]
+pub struct GenerateCancel {
+    token: CancelToken,
+}
+
+#[napi]
+impl GenerateCancel {
+    /// Fresh flag. Call [`Self::cancel`] from the JavaScript thread.
+    #[napi(constructor)]
+    pub fn new() -> Self {
+        Self {
+            token: CancelToken::new(),
+        }
+    }
+
+    /// Request cancellation. Idempotent.
+    #[napi]
+    pub fn cancel(&self) {
+        self.token.cancel();
+    }
+}
+
+/// One JSON generate scheduled on the libuv thread pool.
+pub struct GenerateJsonTask {
+    /// `zb.request/v2` JSON document.
+    request_json: String,
+    /// Cooperative cancel flag cloned from [`GenerateCancel`].
+    cancel: CancelToken,
+}
+
+#[napi]
+impl Task for GenerateJsonTask {
+    type Output = GenerateResponse;
+    type JsValue = GenerateResponse;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let request = generate_request_from_json(&self.request_json)
+            .map_err(|err| Error::from_reason(err.to_string()))?;
+        generate_response_with_cancel(request, &self.cancel)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Generate on the libuv thread pool so `AbortSignal` can flip [`GenerateCancel`].
+#[napi]
+pub fn generate_request_json_cancellable(
+    request_json: String,
+    cancel: &GenerateCancel,
+) -> AsyncTask<GenerateJsonTask> {
+    AsyncTask::new(GenerateJsonTask {
+        request_json,
+        cancel: cancel.token.clone(),
+    })
 }

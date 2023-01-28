@@ -57,6 +57,14 @@ export type BackendVerifyResult = {
 export type ZipBomberBackendHooks = {
     /** Preferred full-request path (`zb.request/v2` JSON). */
     generateRequestJson?: (requestJson: string) => BackendGenerateResult;
+    /**
+     * Libuv-pool generate. `signal` abort flips the shared cancel flag.
+     * WASM has no mid-call interrupt. The facade still honors an already-aborted signal.
+     */
+    generateRequestCancellable?: (
+        requestJson: string,
+        signal?: AbortSignal,
+    ) => Promise<BackendGenerateResult>;
     planRequestJson?: (requestJson: string) => BackendPlanResult;
     /** Bare-variant fallback used by older bindings. */
     generateVariant?: (variant: string) => BackendGenerateResult;
@@ -77,6 +85,23 @@ function notImplementedReport(variant: VariantId): GenerateReport {
         error_code: "ZB_NOT_IMPLEMENTED",
         error_message: `variant \`${variant}\` is recognized but not implemented`,
         crc_strategy: "reset_bytes",
+    };
+}
+
+function cancelledOutcome(variant: VariantId): Outcome<ArtifactSet> {
+    const report = notImplementedReport(variant);
+    report.status = "error";
+    report.error_code = "ZB_CANCELLED";
+    report.error_message = "solver cancelled";
+    report.warnings = [];
+    return {
+        ok: false,
+        error: {
+            category: "cancelled",
+            code: "ZB_CANCELLED",
+            message: "solver cancelled",
+        },
+        report,
     };
 }
 
@@ -241,6 +266,7 @@ export function createSharedZipBomberApi(
 ): ZipBomberApi {
     let disposed = false;
     const hasGenerate =
+        typeof hooks.generateRequestCancellable === "function" ||
         typeof hooks.generateRequestJson === "function" ||
         typeof hooks.generateVariant === "function";
 
@@ -263,7 +289,19 @@ export function createSharedZipBomberApi(
         return run();
     };
 
-    const runRequest = (request: GenerateRequest): Outcome<ArtifactSet> => {
+    const runRequest = async (
+        request: GenerateRequest,
+        signal?: AbortSignal,
+    ): Promise<Outcome<ArtifactSet>> => {
+        if (signal?.aborted) {
+            return cancelledOutcome(request.variant);
+        }
+        if (hooks.generateRequestCancellable) {
+            return outcomeFromBackend(
+                request.variant,
+                await hooks.generateRequestCancellable(toWireJson(request), signal),
+            );
+        }
         if (hooks.generateRequestJson && requestNeedsJson(request)) {
             return outcomeFromBackend(
                 request.variant,
@@ -408,8 +446,9 @@ export function createSharedZipBomberApi(
         plan(request) {
             return guard(async () => planRequest(isGraphSpec(request) ? graphRequest(request) : request));
         },
-        generate(request) {
-            return guard(async () => runRequest(isGraphSpec(request) ? graphRequest(request) : request));
+        generate(request, options) {
+            const spec = isGraphSpec(request) ? graphRequest(request) : request;
+            return guard(async () => runRequest(spec, options?.signal));
         },
         verify(input) {
             return guard(async () => verifyBytes(input));

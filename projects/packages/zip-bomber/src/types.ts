@@ -156,7 +156,10 @@ export type VerifySummary = {
 export type ZipBomberApi = {
     capabilities(): Promise<CapabilitySet>;
     plan(request: GenerateRequest | GraphSpec): Promise<Outcome<PlanSummary>>;
-    generate(request: GenerateRequest | GraphSpec): Promise<Outcome<ArtifactSet>>;
+    generate(
+        request: GenerateRequest | GraphSpec,
+        options?: { signal?: AbortSignal },
+    ): Promise<Outcome<ArtifactSet>>;
     verify(
         input: ArtifactSet,
         spec?: unknown,

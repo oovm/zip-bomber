@@ -69,6 +69,11 @@ type NativeBinding = {
     }>;
     generateVariant?: (variant: string) => NativeGenerateResult;
     generateRequestJson?: (requestJson: string) => NativeGenerateResult;
+    generateRequestJsonCancellable?: (
+        requestJson: string,
+        cancel: { cancel: () => void },
+    ) => Promise<NativeGenerateResult>;
+    GenerateCancel?: new () => { cancel: () => void };
     planVariant?: (variant: string) => NativePlanResult;
     planRequestJson?: (requestJson: string) => NativePlanResult;
     verifyZipBytesNapi?: (bytes: Buffer) => {
@@ -100,6 +105,39 @@ function mapCapabilities(binding: NativeBinding): CapabilitySet | undefined {
 function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
     const caps = mapCapabilities(binding);
     return {
+        generateRequestCancellable:
+            binding.generateRequestJsonCancellable && binding.GenerateCancel
+                ? async (requestJson, signal) => {
+                      const handle = new binding.GenerateCancel!();
+                      const onAbort = () => handle.cancel();
+                      signal?.addEventListener("abort", onAbort);
+                      try {
+                          const result = await binding.generateRequestJsonCancellable!(
+                              requestJson,
+                              handle,
+                          );
+                          return {
+                              exitCode: result.exitCode,
+                              ok: result.ok,
+                              bytes: toUint8Array(result.bytes),
+                              root: result.root,
+                              artifacts: result.artifacts?.map((a) => ({
+                                  id: a.id,
+                                  bytes: toUint8Array(a.bytes)!,
+                                  byteLength: a.byteLength,
+                                  digest: a.digest,
+                              })),
+                              logicalNodeMap: result.logicalNodeMap,
+                              reportJson: result.reportJson,
+                              errorCategory: result.errorCategory,
+                              errorCode: result.errorCode,
+                              errorMessage: result.errorMessage,
+                          };
+                      } finally {
+                          signal?.removeEventListener("abort", onAbort);
+                      }
+                  }
+                : undefined,
         generateRequestJson: binding.generateRequestJson
             ? (requestJson) => {
                   const result = binding.generateRequestJson!(requestJson);
