@@ -348,6 +348,132 @@ fn size_bound(list: &[StoredMember], request: &GenerateRequest) -> ZbResult<()> 
     Ok(())
 }
 
+/// Plan finite fractal unique artifact bytes and consumer logical unfold before emit.
+///
+/// Multiplicity `c_d(v)` follows Living `05`: from the root at remaining depth `D`,
+/// each archive edge to `w` contributes one visit at remaining `d-1`. Unique physical
+/// bytes sum planned sizes of each memoized `(v, d)` once. Logical bytes weight child
+/// sizes by visit multiplicity and must stay within `max_decoded_bytes`.
+fn plan_finite_expansion(
+    request: &GenerateRequest,
+    g: &ArchiveGraphSpec,
+    depth: u32,
+    needed: &BTreeSet<(usize, u32)>,
+) -> ZbResult<()> {
+    let mut sizes: BTreeMap<(usize, u32), u64> = BTreeMap::new();
+    let mut unique = 0u64;
+    for d in 0..=depth {
+        for &(n, rem) in needed.iter().filter(|(_, remaining)| *remaining == d) {
+            let list = if rem == 0 {
+                g.nodes[n]
+                    .terminal
+                    .as_ref()
+                    .ok_or_else(|| invalid(format!("state {n} missing terminal at cutoff")))?
+            } else {
+                &g.nodes[n].members
+            };
+            let mut members = Vec::with_capacity(list.len());
+            for m in list {
+                match m {
+                    Member::Payload { path, bytes } => {
+                        let payload = zb_types::decode_base64(bytes)?;
+                        members.push((path.len(), payload.len() as u64));
+                    }
+                    Member::Archive { path, target, .. } => {
+                        let child = sizes.get(&(*target, rem.saturating_sub(1))).copied().ok_or_else(
+                            || invalid("missing finite planned dependency"),
+                        )?;
+                        members.push((path.len(), child));
+                    }
+                }
+            }
+            let size = 22u64
+                + members
+                    .iter()
+                    .map(|(name_len, payload)| 76u64 + 2 * (*name_len as u64) + *payload)
+                    .sum::<u64>();
+            if size > request.limits.max_artifact_bytes
+                || size.saturating_mul(4) > request.limits.max_live_memory_bytes
+            {
+                return Err(ZbError::resource_limited(
+                    "planned graph artifact or live memory budget exceeded",
+                ));
+            }
+            unique = unique
+                .checked_add(size)
+                .ok_or_else(|| ZbError::resource_limited("unique byte counter overflow"))?;
+            if unique > request.limits.max_total_artifact_bytes {
+                return Err(ZbError::resource_limited(format!(
+                    "planned unique artifact bytes {unique} exceed max_total_artifact_bytes {}",
+                    request.limits.max_total_artifact_bytes
+                )));
+            }
+            sizes.insert((n, rem), size);
+        }
+    }
+
+    // Multiplicity from root: c[root][depth] = 1, push along archive edges.
+    let mut counts: BTreeMap<(usize, u32), u64> = BTreeMap::new();
+    counts.insert((g.root, depth), 1);
+    let mut logical = 0u64;
+    for rem in (0..=depth).rev() {
+        let layer: Vec<(usize, u32)> = needed
+            .iter()
+            .copied()
+            .filter(|(_, r)| *r == rem)
+            .collect();
+        for (n, _) in layer {
+            let visits = counts.get(&(n, rem)).copied().unwrap_or(0);
+            if visits == 0 {
+                continue;
+            }
+            let list = if rem == 0 {
+                g.nodes[n]
+                    .terminal
+                    .as_ref()
+                    .ok_or_else(|| invalid(format!("state {n} missing terminal at cutoff")))?
+            } else {
+                &g.nodes[n].members
+            };
+            let mut has_archive = false;
+            for m in list {
+                if let Member::Archive { target, .. } = m {
+                    has_archive = true;
+                    if rem > 0 {
+                        let key = (*target, rem - 1);
+                        let next = counts
+                            .get(&key)
+                            .copied()
+                            .unwrap_or(0)
+                            .checked_add(visits)
+                            .ok_or_else(|| {
+                                ZbError::resource_limited("finite expansion multiplicity overflow")
+                            })?;
+                        counts.insert(key, next);
+                    }
+                }
+            }
+            if !has_archive {
+                let size = sizes.get(&(n, rem)).copied().unwrap_or(0);
+                logical = logical
+                    .checked_add(
+                        visits
+                            .checked_mul(size)
+                            .ok_or_else(|| ZbError::resource_limited("logical expansion overflow"))?,
+                    )
+                    .ok_or_else(|| ZbError::resource_limited("logical expansion overflow"))?;
+                if logical > request.limits.max_decoded_bytes {
+                    return Err(ZbError::resource_limited(format!(
+                        "planned logical expansion {logical} exceeds max_decoded_bytes {}",
+                        request.limits.max_decoded_bytes
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 struct CompiledGraph {
     set: ArtifactSet,
     loopy: Option<zb_types::LoopyFacts>,
@@ -401,6 +527,8 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
                 }
             }
         }
+        // Living 05: plan expansion multiplicity and unique bytes before emit.
+        plan_finite_expansion(request, g, depth, &needed)?;
         for d in 0..=depth {
             for &(n, _) in needed.iter().filter(|(_, remaining)| *remaining == d) {
                 let list = if d == 0 {

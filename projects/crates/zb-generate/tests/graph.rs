@@ -98,6 +98,23 @@ fn unsupported_profile_does_not_silently_use_gapped_constructor() {
 }
 
 #[test]
+fn finite_fractal_rejects_planned_unique_budget_before_emit() {
+    let mut req = request("fractal", "finite", "zip.profile/v0-stub", Some("2"));
+    req.limits.max_total_artifact_bytes = 30;
+    match generate(req) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.category, zb_types::ErrorCategory::ResourceLimited);
+            assert!(
+                error.message.contains("planned"),
+                "message={}",
+                error.message
+            );
+        }
+        other => panic!("expected resource_limited plan reject, got {other:?}"),
+    }
+}
+
+#[test]
 fn three_node_loopy_is_unsupported_topology() {
     for profile in ["zip.loopy-two-node.gapped/v1", "zip.profile/v0-stub"] {
         match generate(three_node_loopy(profile)) {

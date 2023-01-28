@@ -61,6 +61,48 @@ fn finite_bomb_rejects_tiny_artifact_budget() {
 }
 
 #[test]
+fn finite_bomb_rejects_logical_budget_before_emit() {
+    let mut req = GenerateRequest::bare(VariantKind::Bomb);
+    req.limits = GenerateLimits {
+        max_decoded_bytes: 1,
+        ..GenerateLimits::small_sample()
+    };
+    match generate(req) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.category, ErrorCategory::ResourceLimited);
+            assert!(
+                error.message.contains("logical expansion"),
+                "message={}",
+                error.message
+            );
+        }
+        Outcome::Ok { .. } => panic!("tiny decode budget must fail in plan"),
+    }
+}
+
+#[test]
+fn finite_bomb_rejects_planned_unique_budget_before_emit() {
+    let mut req = GenerateRequest::bare(VariantKind::Bomb);
+    // Depth 2 default fits in a few hundred bytes; cap total unique below that.
+    req.limits = GenerateLimits {
+        max_total_artifact_bytes: 40,
+        ..GenerateLimits::small_sample()
+    };
+    match generate(req) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.category, ErrorCategory::ResourceLimited);
+            assert!(
+                error.message.contains("planned unique")
+                    || error.message.contains("unique artifact"),
+                "message={}",
+                error.message
+            );
+        }
+        Outcome::Ok { .. } => panic!("tiny unique budget must fail in plan"),
+    }
+}
+
+#[test]
 fn topology_dag_emits_nested_member_path() {
     let mut req = GenerateRequest::bare(VariantKind::Bomb);
     req.topology = TopologyGraph::bomb_nest("root.zip", "child.zip", "nested/child.zip");

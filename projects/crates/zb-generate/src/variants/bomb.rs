@@ -72,7 +72,8 @@ fn emit_default_nested(request: &GenerateRequest) -> ZbResult<BuiltBomb> {
         .map(|p| p.bytes.as_slice())
         .unwrap_or(DEFAULT_LEAF);
 
-    let logical = checked_logical(leaf.len() as u64, branch, depth, request.limits.max_decoded_bytes)?;
+    // Living 05 / 10: reject exponential logical and unique budgets before allocation.
+    let logical = plan_default_nested(leaf.len() as u64, branch, depth, &request.limits)?;
 
     let mut level_bytes = emit_stored_archive(&[StoredMember {
         path: "payload.bin".to_string(),
@@ -247,6 +248,8 @@ fn emit_topology_dag(request: &GenerateRequest) -> ZbResult<BuiltBomb> {
 
     // Emit leaves first: reverse topo so children precede parents.
     order.reverse();
+    plan_topology_dag(request, &order, &nest_out, root, &payload_by_path)?;
+
     let mut archive_bytes: HashMap<NodeId, Vec<u8>> = HashMap::new();
     let mut unique_total = 0u64;
     let mut max_depth = 1u32;
@@ -388,10 +391,23 @@ fn logical_unfold(
     archives: &HashMap<NodeId, Vec<u8>>,
     max_decoded: u64,
 ) -> ZbResult<u64> {
+    let sizes: HashMap<NodeId, u64> = archives
+        .iter()
+        .map(|(id, bytes)| (id.clone(), bytes.len() as u64))
+        .collect();
+    logical_unfold_sizes(root, nest_out, &sizes, max_decoded)
+}
+
+fn logical_unfold_sizes(
+    root: &NodeId,
+    nest_out: &HashMap<&NodeId, Vec<&zb_types::ArchiveEdge>>,
+    sizes: &HashMap<NodeId, u64>,
+    max_decoded: u64,
+) -> ZbResult<u64> {
     fn walk(
         node: &NodeId,
         nest_out: &HashMap<&NodeId, Vec<&zb_types::ArchiveEdge>>,
-        archives: &HashMap<NodeId, Vec<u8>>,
+        sizes: &HashMap<NodeId, u64>,
         max_decoded: u64,
         memo: &mut HashMap<NodeId, u64>,
     ) -> ZbResult<u64> {
@@ -400,11 +416,11 @@ fn logical_unfold(
         }
         let children = nest_out.get(node).map(|v| v.as_slice()).unwrap_or(&[]);
         let total = if children.is_empty() {
-            archives.get(node).map(|b| b.len() as u64).unwrap_or(0)
+            sizes.get(node).copied().unwrap_or(0)
         } else {
             let mut sum = 0u64;
             for edge in children {
-                let child = walk(&edge.to, nest_out, archives, max_decoded, memo)?;
+                let child = walk(&edge.to, nest_out, sizes, max_decoded, memo)?;
                 sum = sum
                     .checked_add(child)
                     .ok_or_else(|| ZbError::resource_limited("logical expansion overflow"))?;
@@ -419,7 +435,134 @@ fn logical_unfold(
         memo.insert(node.clone(), total);
         Ok(total)
     }
-    walk(root, nest_out, archives, max_decoded, &mut HashMap::new())
+    walk(root, nest_out, sizes, max_decoded, &mut HashMap::new())
+}
+
+/// Exact stored-ZIP size for known member name/payload lengths (LFH+CD+EOCD).
+fn estimate_stored_archive(members: &[(usize, u64)]) -> u64 {
+    22u64
+        + members
+            .iter()
+            .map(|(name_len, payload)| 76u64 + 2 * (*name_len as u64) + *payload)
+            .sum::<u64>()
+}
+
+/// Plan default nested bomb: logical unfold and unique layer bytes before emit.
+fn plan_default_nested(
+    leaf: u64,
+    branch: u32,
+    depth: u32,
+    limits: &zb_types::GenerateLimits,
+) -> ZbResult<u64> {
+    let logical = checked_logical(leaf, branch, depth, limits.max_decoded_bytes)?;
+    let mut layer = estimate_stored_archive(&[("payload.bin".len(), leaf)]);
+    enforce_artifact_budget(layer, limits)?;
+    let mut unique = layer;
+    for d in 1..depth {
+        let mut members = Vec::with_capacity(branch as usize);
+        for i in 0..branch {
+            let name = format!("n{d}/{i}.zip");
+            members.push((name.len(), layer));
+        }
+        layer = estimate_stored_archive(&members);
+        enforce_artifact_budget(layer, limits)?;
+        unique = unique
+            .checked_add(layer)
+            .ok_or_else(|| ZbError::resource_limited("unique byte counter overflow"))?;
+        if unique > limits.max_total_artifact_bytes {
+            return Err(ZbError::resource_limited(format!(
+                "planned unique artifact bytes {unique} exceed max_total_artifact_bytes {}",
+                limits.max_total_artifact_bytes
+            )));
+        }
+    }
+    Ok(logical)
+}
+
+/// Plan topology DAG sizes and logical unfold before allocating archives.
+fn plan_topology_dag(
+    request: &GenerateRequest,
+    order: &[&NodeId],
+    nest_out: &HashMap<&NodeId, Vec<&zb_types::ArchiveEdge>>,
+    root: &NodeId,
+    payload_by_path: &HashMap<&str, &[u8]>,
+) -> ZbResult<()> {
+    let graph = &request.topology;
+    let mut planned: HashMap<NodeId, u64> = HashMap::new();
+    let mut unique = 0u64;
+    let mut max_depth = 1u32;
+    let mut depths: HashMap<NodeId, u32> = HashMap::new();
+
+    for node in order {
+        let mut members: Vec<(usize, u64)> = Vec::new();
+        for edge in graph.edges.iter().filter(|e| e.from == **node) {
+            match edge.role {
+                EdgeRole::NestedArchive => {
+                    let child = planned.get(&edge.to).copied().ok_or_else(|| {
+                        ZbError::new(
+                            ErrorCode::Internal,
+                            format!("missing planned child `{}`", edge.to.0),
+                        )
+                    })?;
+                    members.push((edge.member_path.len(), child));
+                }
+                EdgeRole::Payload => {
+                    let bytes = payload_by_path
+                        .get(edge.member_path.as_str())
+                        .copied()
+                        .unwrap_or(DEFAULT_LEAF);
+                    members.push((edge.member_path.len(), bytes.len() as u64));
+                }
+                EdgeRole::SelfReference | EdgeRole::FractalRole => unreachable!(),
+            }
+        }
+        if members.is_empty() {
+            let bytes = request
+                .payloads
+                .first()
+                .map(|p| p.bytes.as_slice())
+                .unwrap_or(DEFAULT_LEAF);
+            members.push(("payload.bin".len(), bytes.len() as u64));
+        }
+        if members.len() as u32 > request.limits.max_members {
+            return Err(ZbError::resource_limited(format!(
+                "node `{}` has {} members exceeding max_members {}",
+                node.0,
+                members.len(),
+                request.limits.max_members
+            )));
+        }
+        let child_depth = nest_out
+            .get(node)
+            .into_iter()
+            .flatten()
+            .map(|e| depths.get(&e.to).copied().unwrap_or(1))
+            .max()
+            .unwrap_or(0);
+        let depth = child_depth + 1;
+        depths.insert((*node).clone(), depth);
+        max_depth = max_depth.max(depth);
+        if max_depth > request.limits.max_depth {
+            return Err(ZbError::resource_limited(format!(
+                "topology depth {max_depth} exceeds max_depth {}",
+                request.limits.max_depth
+            )));
+        }
+        let size = estimate_stored_archive(&members);
+        enforce_artifact_budget(size, &request.limits)?;
+        unique = unique
+            .checked_add(size)
+            .ok_or_else(|| ZbError::resource_limited("unique byte counter overflow"))?;
+        if unique > request.limits.max_total_artifact_bytes {
+            return Err(ZbError::resource_limited(format!(
+                "planned unique artifact bytes {unique} exceed max_total_artifact_bytes {}",
+                request.limits.max_total_artifact_bytes
+            )));
+        }
+        planned.insert((*node).clone(), size);
+    }
+    logical_unfold_sizes(root, nest_out, &planned, request.limits.max_decoded_bytes)?;
+    Ok(())
 }
 
 fn checked_logical(leaf: u64, branch: u32, depth: u32, max_decoded: u64) -> ZbResult<u64> {
