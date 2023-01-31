@@ -4,7 +4,7 @@ use acorn_core::ParseBudget;
 use acorn_source::MemorySource;
 use acorn_zip::{decode_member_with_facts, index_zip_bytes};
 use serde::{Deserialize, Serialize};
-use zb_types::{ArtifactSet, ZbError, ZbResult};
+use zb_types::{ArtifactSet, CycleVerifyFacts, ZbError, ZbResult};
 
 /// Facts the Acorn ZIP adapter must eventually expose for full verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +94,9 @@ pub struct VerificationReport {
     pub missing_capabilities: Vec<String>,
     /// Stable diagnostic notes.
     pub notes: Vec<String>,
+    /// Cycle edge / period evidence when a [`zb_types::VerificationSpec`] was supplied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<CycleVerifyFacts>,
 }
 
 /// Verify emitted ZIP bytes through an independent Acorn parser path.
@@ -107,7 +110,15 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
         )));
     }
 
-    if is_empty_zip(bytes) { return Ok(VerificationReport { ok: true, acorn, missing_capabilities: Vec::new(), notes: vec!["minimal empty ZIP EOCD verified".into()] }); }
+    if is_empty_zip(bytes) {
+        return Ok(VerificationReport {
+            ok: true,
+            acorn,
+            missing_capabilities: Vec::new(),
+            notes: vec!["minimal empty ZIP EOCD verified".into()],
+            cycle: None,
+        });
+    }
     let owned = bytes.to_vec();
     let index = index_zip_bytes("zb-verify.zip", owned.clone())
         .map_err(|err| ZbError::verification_failed(format!("Acorn ZIP index failed: {err}")))?;
@@ -157,6 +168,7 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
         acorn,
         missing_capabilities: Vec::new(),
         notes,
+        cycle: None,
     })
 }
 
@@ -223,6 +235,7 @@ pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
         acorn,
         missing_capabilities: Vec::new(),
         notes,
+        cycle: None,
     })
 }
 

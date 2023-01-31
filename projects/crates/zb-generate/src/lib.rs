@@ -34,7 +34,10 @@ pub use templates::{
     list_quine_templates, LzOp, QuineTemplateMeta,
 };
 pub use variants::ArtifactBundle;
-pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
+pub use verify::{
+    cycle_edges_from_graph, minimum_byte_period, verify_artifact_set, verify_artifact_set_for_request,
+    verify_artifact_set_with_spec, verify_zip_bytes, AcornZipCapability, VerificationReport,
+};
 /// Re-export solver surface so generate callers share one dependency path.
 pub use zb_solver::{
     crc32, crc32_affine_columns, solve, solve_rows, solve_with_cancel, u32_to_bits, Assignment,
@@ -265,7 +268,15 @@ pub fn report_json(report: &GenerateReport) -> ZbResult<String> {
     })
 }
 
-/// Independent ZIP verification entry (returns capability gap until Acorn is wired).
+/// Independent ZIP verification entry (structure only).
 pub fn verify(set: &ArtifactSet) -> ZbResult<VerificationReport> {
     verify_artifact_set(set)
+}
+
+/// Independent ZIP + optional cycle / period verification.
+pub fn verify_with_spec(
+    set: &ArtifactSet,
+    spec: &zb_types::VerificationSpec,
+) -> ZbResult<VerificationReport> {
+    verify_artifact_set_with_spec(set, spec)
 }
