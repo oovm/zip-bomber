@@ -4,9 +4,13 @@
 
 use wasm_bindgen::prelude::*;
 use zb_generate::{
-    capabilities, generate, list_variants, plan_generate, report_json, verify_zip_bytes,
+    capabilities, generate, list_variants, plan_generate, report_json, verify_artifact_set,
+    verify_artifact_set_for_request, verify_artifact_set_with_spec, verify_zip_bytes,
 };
-use zb_types::{generate_request_from_json, GenerateRequest, Outcome, VariantKind};
+use zb_types::{
+    artifact_set_from_json, generate_request_from_json, verification_spec_from_json, GenerateRequest,
+    Outcome, VariantKind,
+};
 
 /// Comma-separated variant ids for capability probes.
 #[wasm_bindgen(js_name = listVariants)]
@@ -167,11 +171,10 @@ fn b64_to_bytes(b64: &str) -> Result<Vec<u8>, JsValue> {
     Ok(out)
 }
 
-/// Verify ZIP bytes (base64) and return JSON verification report.
-#[wasm_bindgen(js_name = verifyZipBytesJson)]
-pub fn verify_zip_bytes_json(bytes_base64: String) -> Result<String, JsValue> {
-    let bytes = b64_to_bytes(&bytes_base64)?;
-    let payload = match verify_zip_bytes(&bytes) {
+fn verify_payload(
+    result: zb_types::ZbResult<zb_generate::VerificationReport>,
+) -> Result<String, JsValue> {
+    let payload = match result {
         Ok(report) => serde_json::json!({
             "ok": report.ok,
             "report": report,
@@ -186,6 +189,42 @@ pub fn verify_zip_bytes_json(bytes_base64: String) -> Result<String, JsValue> {
         }),
     };
     serde_json::to_string(&payload).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+/// Verify ZIP bytes (base64) and return JSON verification report.
+#[wasm_bindgen(js_name = verifyZipBytesJson)]
+pub fn verify_zip_bytes_json(bytes_base64: String) -> Result<String, JsValue> {
+    let bytes = b64_to_bytes(&bytes_base64)?;
+    verify_payload(verify_zip_bytes(&bytes))
+}
+
+/// Verify a full artifact set JSON, optionally with cycle verification spec JSON.
+#[wasm_bindgen(js_name = verifyArtifactSetJson)]
+pub fn verify_artifact_set_json(
+    set_json: String,
+    spec_json: Option<String>,
+) -> Result<String, JsValue> {
+    let set = artifact_set_from_json(&set_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
+    match spec_json {
+        Some(spec) if !spec.trim().is_empty() => {
+            let spec = verification_spec_from_json(&spec)
+                .map_err(|err| JsValue::from_str(&err.to_string()))?;
+            verify_payload(verify_artifact_set_with_spec(&set, &spec))
+        }
+        _ => verify_payload(verify_artifact_set(&set)),
+    }
+}
+
+/// Verify an artifact set using edges / period inferred from a generate request JSON.
+#[wasm_bindgen(js_name = verifyArtifactSetForRequestJson)]
+pub fn verify_artifact_set_for_request_json(
+    set_json: String,
+    request_json: String,
+) -> Result<String, JsValue> {
+    let set = artifact_set_from_json(&set_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let request = generate_request_from_json(&request_json)
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    verify_payload(verify_artifact_set_for_request(&set, &request))
 }
 
 /// Generate a bare variant and return JSON `{ ok, report, bytesBase64?, error? }`.

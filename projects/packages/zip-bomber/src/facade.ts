@@ -10,11 +10,12 @@ import {
     type Outcome,
     type PlanSummary,
     type VariantId,
+    type VerificationSpec,
     type VerifySummary,
     type ZipBomberApi,
     type ZbError,
 } from "./types.js";
-import { encodeGenerateRequestJson } from "./wire.js";
+import { encodeArtifactSetJson, encodeGenerateRequestJson } from "./wire.js";
 
 /** Native / WASM generate hook result (root archive bytes). */
 export type BackendGenerateResult = {
@@ -70,6 +71,16 @@ export type ZipBomberBackendHooks = {
     generateVariant?: (variant: string) => BackendGenerateResult;
     planVariant?: (variant: string) => BackendPlanResult;
     verifyZipBytes?: (bytes: Uint8Array) => BackendVerifyResult;
+    /** Full artifact-set verify with optional cycle [`VerificationSpec`] JSON. */
+    verifyArtifactSetJson?: (
+        setJson: string,
+        specJson?: string,
+    ) => BackendVerifyResult;
+    /** Infer cycle edges / period from a generate request JSON. */
+    verifyArtifactSetForRequestJson?: (
+        setJson: string,
+        requestJson: string,
+    ) => BackendVerifyResult;
     capabilities?: () => CapabilitySet;
 };
 
@@ -374,7 +385,83 @@ export function createSharedZipBomberApi(
         };
     };
 
-    const verifyBytes = (input: ArtifactSet): Outcome<VerifySummary> => {
+    const summarizeVerify = (
+        result: BackendVerifyResult,
+    ): Outcome<VerifySummary> => {
+        const report = parseReport(result.reportJson, "bomb");
+        if (result.ok) {
+            let notes: string[] = [];
+            let missingCapabilities: string[] = [];
+            let cycle: VerifySummary["cycle"];
+            try {
+                const parsed = JSON.parse(result.reportJson) as {
+                    notes?: string[];
+                    missing_capabilities?: string[];
+                    cycle?: VerifySummary["cycle"];
+                };
+                notes = parsed.notes ?? [];
+                missingCapabilities = parsed.missing_capabilities ?? [];
+                cycle = parsed.cycle ?? undefined;
+            } catch {
+                // keep empty notes
+            }
+            return {
+                ok: true,
+                value: { verified: true, notes, missingCapabilities, cycle },
+                report,
+            };
+        }
+        return {
+            ok: false,
+            error: {
+                category:
+                    (result.errorCategory as ZbError["category"]) ?? "verification_failed",
+                code: result.errorCode ?? "ZB_VERIFICATION_FAILED",
+                message: result.errorMessage ?? "verification failed",
+            },
+            report,
+        };
+    };
+
+    const isGenerateRequest = (value: unknown): value is GenerateRequest =>
+        typeof value === "object" &&
+        value !== null &&
+        (value as GenerateRequest).schema === "zb.request/v2" &&
+        typeof (value as GenerateRequest).variant === "string";
+
+    const verifySet = (
+        input: ArtifactSet,
+        spec?: VerificationSpec | GenerateRequest,
+    ): Outcome<VerifySummary> => {
+        if (input.artifacts.length === 0) {
+            const report = notImplementedReport("bomb");
+            report.status = "error";
+            report.error_code = "ZB_INVALID_TOPOLOGY";
+            report.error_message = "artifact set has no artifacts to verify";
+            return {
+                ok: false,
+                error: {
+                    category: "invalid_request",
+                    code: "ZB_INVALID_TOPOLOGY",
+                    message: "artifact set has no artifacts to verify",
+                },
+                report,
+            };
+        }
+        const setJson = encodeArtifactSetJson(input);
+        if (isGenerateRequest(spec) && hooks.verifyArtifactSetForRequestJson) {
+            return summarizeVerify(
+                hooks.verifyArtifactSetForRequestJson(
+                    setJson,
+                    encodeGenerateRequestJson(spec),
+                ),
+            );
+        }
+        if (hooks.verifyArtifactSetJson) {
+            const specJson =
+                spec && !isGenerateRequest(spec) ? JSON.stringify(spec) : undefined;
+            return summarizeVerify(hooks.verifyArtifactSetJson(setJson, specJson));
+        }
         const root =
             input.artifacts.find((a) => a.id === input.root) ?? input.artifacts[0];
         if (!root || root.bytes.length === 0) {
@@ -393,37 +480,7 @@ export function createSharedZipBomberApi(
             };
         }
         if (hooks.verifyZipBytes) {
-            const result = hooks.verifyZipBytes(root.bytes);
-            const report = parseReport(result.reportJson, "bomb");
-            if (result.ok) {
-                let notes: string[] = [];
-                let missingCapabilities: string[] = [];
-                try {
-                    const parsed = JSON.parse(result.reportJson) as {
-                        notes?: string[];
-                        missing_capabilities?: string[];
-                    };
-                    notes = parsed.notes ?? [];
-                    missingCapabilities = parsed.missing_capabilities ?? [];
-                } catch {
-                    // keep empty notes
-                }
-                return {
-                    ok: true,
-                    value: { verified: true, notes, missingCapabilities },
-                    report,
-                };
-            }
-            return {
-                ok: false,
-                error: {
-                    category:
-                        (result.errorCategory as ZbError["category"]) ?? "verification_failed",
-                    code: result.errorCode ?? "ZB_VERIFICATION_FAILED",
-                    message: result.errorMessage ?? "verification failed",
-                },
-                report,
-            };
+            return summarizeVerify(hooks.verifyZipBytes(root.bytes));
         }
         return {
             ok: false,
@@ -450,8 +507,8 @@ export function createSharedZipBomberApi(
             const spec = isGraphSpec(request) ? graphRequest(request) : request;
             return guard(async () => runRequest(spec, options?.signal));
         },
-        verify(input) {
-            return guard(async () => verifyBytes(input));
+        verify(input, spec) {
+            return guard(async () => verifySet(input, spec));
         },
         zipBomb(options) {
             return guard(async () => runRequest(mergeRequest("bomb", options)));

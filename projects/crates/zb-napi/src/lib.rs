@@ -5,10 +5,13 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use zb_generate::{
-    capabilities, generate_with_cancel, list_variants, plan_generate, report_json, verify_zip_bytes,
-    CancelToken,
+    capabilities, generate_with_cancel, list_variants, plan_generate, report_json,
+    verify_artifact_set_for_request, verify_artifact_set_with_spec, verify_zip_bytes, CancelToken,
 };
-use zb_types::{generate_request_from_json, GenerateRequest, Outcome, ReportStatus, VariantKind};
+use zb_types::{
+    artifact_set_from_json, generate_request_from_json, verification_spec_from_json, GenerateRequest,
+    Outcome, ReportStatus, VariantKind,
+};
 
 /// N-API generate response.
 #[napi(object)]
@@ -265,10 +268,10 @@ pub fn plan_request_json(request_json: String) -> Result<PlanResponse> {
     plan_response(request)
 }
 
-/// Independently verify raw ZIP archive bytes through Acorn.
-#[napi]
-pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
-    match verify_zip_bytes(bytes.as_ref()) {
+fn verify_response(
+    result: zb_types::ZbResult<zb_generate::VerificationReport>,
+) -> Result<VerifyResponse> {
+    match result {
         Ok(report) => {
             let report_json = serde_json::to_string_pretty(&report)
                 .map_err(|err| Error::from_reason(err.to_string()))?;
@@ -285,6 +288,7 @@ pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
             exit_code: match error.code {
                 zb_types::ErrorCode::NotImplemented
                 | zb_types::ErrorCode::VerificationCapabilityMissing => 2,
+                zb_types::ErrorCode::PeriodMismatch => 1,
                 _ => 1,
             },
             ok: false,
@@ -294,6 +298,43 @@ pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
             error_message: Some(error.message),
         }),
     }
+}
+
+/// Independently verify raw ZIP archive bytes through Acorn.
+#[napi]
+pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
+    verify_response(verify_zip_bytes(bytes.as_ref()))
+}
+
+/// Verify a full artifact set JSON, optionally with a cycle [`VerificationSpec`] JSON.
+#[napi]
+pub fn verify_artifact_set_json(
+    set_json: String,
+    spec_json: Option<String>,
+) -> Result<VerifyResponse> {
+    let set = artifact_set_from_json(&set_json)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+    match spec_json {
+        Some(spec) if !spec.trim().is_empty() => {
+            let spec = verification_spec_from_json(&spec)
+                .map_err(|err| Error::from_reason(err.to_string()))?;
+            verify_response(verify_artifact_set_with_spec(&set, &spec))
+        }
+        _ => verify_response(zb_generate::verify_artifact_set(&set)),
+    }
+}
+
+/// Verify an artifact set using edges / period inferred from a `zb.request/v2` JSON.
+#[napi]
+pub fn verify_artifact_set_for_request_json(
+    set_json: String,
+    request_json: String,
+) -> Result<VerifyResponse> {
+    let set = artifact_set_from_json(&set_json)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+    let request = generate_request_from_json(&request_json)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+    verify_response(verify_artifact_set_for_request(&set, &request))
 }
 
 /// Generate an archive for a lowercase variant id using a bare default topology.

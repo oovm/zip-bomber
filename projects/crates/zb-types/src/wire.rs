@@ -3,9 +3,10 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    format_decimal_u64, parse_decimal_u64, zip_layout, AlignmentPolicy, ArchiveEdge, ContainerKind,
-    CrcStrategy, FractalSpec, GenerateLimits, GenerateRequest, NodeId, PayloadSpec, TopologyGraph,
-    VariantKind, ZbError, ZbResult, REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
+    format_decimal_u64, parse_decimal_u64, zip_layout, AlignmentPolicy, ArchiveEdge, Artifact,
+    ArtifactId, ArtifactSet, ContainerKind, CrcStrategy, FractalSpec, GenerateLimits,
+    GenerateRequest, NodeId, PayloadSpec, TopologyGraph, VariantKind, ZbError, ZbResult,
+    REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
 };
 
 /// Wire payload: archive path plus base64 or raw byte array.
@@ -520,6 +521,124 @@ pub fn generate_request_to_json(request: &GenerateRequest) -> ZbResult<String> {
         ZbError::new(
             crate::ErrorCode::Internal,
             format!("failed to serialize wire request: {err}"),
+        )
+    })
+}
+
+/// Wire artifact with base64 bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WireArtifact {
+    /// Artifact id.
+    pub id: String,
+    /// Optional container id (defaults to zip).
+    #[serde(default)]
+    pub container: Option<String>,
+    /// Base64 archive bytes.
+    #[serde(alias = "bytes_base64")]
+    pub bytes_base64: String,
+    /// Decimal byte length.
+    #[serde(default, alias = "byte_length")]
+    pub byte_length: Option<String>,
+    /// Content digest.
+    #[serde(default)]
+    pub digest: Option<String>,
+}
+
+/// Wire artifact set for Node / WASM verify.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WireArtifactSet {
+    /// Root artifact id.
+    pub root: String,
+    /// Artifacts in stable order.
+    pub artifacts: Vec<WireArtifact>,
+    /// Logical map entries `label=id`.
+    #[serde(default, alias = "logical_node_map")]
+    pub logical_node_map: Vec<String>,
+}
+
+impl WireArtifactSet {
+    /// Encode a core artifact set for JSON transport.
+    pub fn from_set(set: &ArtifactSet) -> Self {
+        Self {
+            root: set.root.0.clone(),
+            artifacts: set
+                .artifacts
+                .iter()
+                .map(|a| WireArtifact {
+                    id: a.id.0.clone(),
+                    container: Some(a.container.as_str().to_string()),
+                    bytes_base64: encode_base64(&a.bytes),
+                    byte_length: Some(a.byte_length.clone()),
+                    digest: Some(a.digest.clone()),
+                })
+                .collect(),
+            logical_node_map: set.logical_node_map.clone(),
+        }
+    }
+
+    /// Decode into a core artifact set.
+    pub fn into_set(self) -> ZbResult<ArtifactSet> {
+        let mut artifacts = Vec::with_capacity(self.artifacts.len());
+        for item in self.artifacts {
+            let bytes = decode_base64(&item.bytes_base64)?;
+            let byte_length = item
+                .byte_length
+                .unwrap_or_else(|| bytes.len().to_string());
+            artifacts.push(Artifact {
+                id: ArtifactId::new(item.id),
+                container: ContainerKind::Zip,
+                bytes,
+                byte_length,
+                digest: item.digest.unwrap_or_default(),
+            });
+        }
+        Ok(ArtifactSet {
+            root: ArtifactId::new(self.root),
+            artifacts,
+            logical_node_map: self.logical_node_map,
+        })
+    }
+}
+
+/// Serialize an artifact set for isomorphic verify.
+pub fn artifact_set_to_json(set: &ArtifactSet) -> ZbResult<String> {
+    serde_json::to_string(&WireArtifactSet::from_set(set)).map_err(|err| {
+        ZbError::new(
+            crate::ErrorCode::Internal,
+            format!("failed to serialize artifact set: {err}"),
+        )
+    })
+}
+
+/// Parse an artifact set from isomorphic JSON.
+pub fn artifact_set_from_json(json: &str) -> ZbResult<ArtifactSet> {
+    let wire: WireArtifactSet = serde_json::from_str(json).map_err(|err| {
+        ZbError::new(
+            crate::ErrorCode::InvalidTopology,
+            format!("invalid artifact set JSON: {err}"),
+        )
+    })?;
+    wire.into_set()
+}
+
+/// Parse a [`crate::VerificationSpec`] from isomorphic JSON.
+pub fn verification_spec_from_json(json: &str) -> ZbResult<crate::VerificationSpec> {
+    serde_json::from_str(json).map_err(|err| {
+        ZbError::new(
+            crate::ErrorCode::InvalidTopology,
+            format!("invalid verification spec JSON: {err}"),
+        )
+    })
+}
+
+/// Serialize a [`crate::VerificationSpec`] for isomorphic verify.
+pub fn verification_spec_to_json(spec: &crate::VerificationSpec) -> ZbResult<String> {
+    serde_json::to_string(spec).map_err(|err| {
+        ZbError::new(
+            crate::ErrorCode::Internal,
+            format!("failed to serialize verification spec: {err}"),
         )
     })
 }

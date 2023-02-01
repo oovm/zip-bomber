@@ -38,6 +38,8 @@ pub use topology::{AlignmentPolicy, ArchiveEdge, EdgeRole, NodeId, TopologyGraph
 pub use variant::{VariantKind, ALL_VARIANTS};
 pub use verification::{CycleVerifyFacts, VerificationSpec, VerifyEdgeSpec};
 pub use wire::{
-    decode_base64, encode_base64, generate_request_from_json, generate_request_to_json,
-    WireArchiveEdge, WireGenerateLimits, WireGenerateRequest, WirePayloadSpec, WireTopologyGraph,
+    artifact_set_from_json, artifact_set_to_json, decode_base64, encode_base64,
+    generate_request_from_json, generate_request_to_json, verification_spec_from_json,
+    verification_spec_to_json, WireArchiveEdge, WireArtifact, WireArtifactSet, WireGenerateLimits,
+    WireGenerateRequest, WirePayloadSpec, WireTopologyGraph,
 };

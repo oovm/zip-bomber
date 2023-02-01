@@ -147,10 +147,29 @@ export type PlanSummary = {
     warnings: string[];
 };
 
+export type VerifyEdgeSpec = {
+    from: string;
+    memberPath: string;
+    to: string;
+};
+
+export type VerificationSpec = {
+    edges?: VerifyEdgeSpec[];
+    expectedBytePeriod?: number;
+};
+
+export type CycleVerifyFacts = {
+    byte_period: number;
+    expected_byte_period?: number | null;
+    edges: LoopyEdgeFact[];
+};
+
 export type VerifySummary = {
     verified: boolean;
     notes: string[];
     missingCapabilities: string[];
+    /** Present when cycle edges / period were checked. */
+    cycle?: CycleVerifyFacts | null;
 };
 
 export type ZipBomberApi = {
@@ -162,7 +181,7 @@ export type ZipBomberApi = {
     ): Promise<Outcome<ArtifactSet>>;
     verify(
         input: ArtifactSet,
-        spec?: unknown,
+        spec?: VerificationSpec | GenerateRequest,
     ): Promise<Outcome<VerifySummary>>;
     zipBomb(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
     zipQuine(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;

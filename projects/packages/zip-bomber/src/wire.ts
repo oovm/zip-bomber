@@ -70,3 +70,28 @@ export function encodeGenerateRequestJson(input: {
     }
     return JSON.stringify(wire);
 }
+
+/** Encode an [`ArtifactSet`] for isomorphic verify (base64 member bytes). */
+export function encodeArtifactSetJson(set: {
+    root: string;
+    artifacts: Array<{
+        id: string;
+        container?: string;
+        bytes: Uint8Array;
+        byteLength?: string;
+        digest?: string;
+    }>;
+    logicalNodeMap?: string[];
+}): string {
+    return JSON.stringify({
+        root: set.root,
+        artifacts: set.artifacts.map((a) => ({
+            id: a.id,
+            container: a.container ?? "zip",
+            bytesBase64: encodeBase64(a.bytes),
+            byteLength: a.byteLength ?? String(a.bytes.length),
+            digest: a.digest ?? "",
+        })),
+        logicalNodeMap: set.logicalNodeMap ?? [],
+    });
+}

@@ -84,6 +84,14 @@ type NativeBinding = {
         errorCode?: string;
         errorMessage?: string;
     };
+    verifyArtifactSetJson?: (
+        setJson: string,
+        specJson?: string | null,
+    ) => NativeVerifyResult;
+    verifyArtifactSetForRequestJson?: (
+        setJson: string,
+        requestJson: string,
+    ) => NativeVerifyResult;
 };
 
 function mapCapabilities(binding: NativeBinding): CapabilitySet | undefined {
@@ -213,6 +221,13 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                       errorMessage: result.errorMessage,
                   };
               }
+            : undefined,
+        verifyArtifactSetJson: binding.verifyArtifactSetJson
+            ? (setJson, specJson) => binding.verifyArtifactSetJson!(setJson, specJson)
+            : undefined,
+        verifyArtifactSetForRequestJson: binding.verifyArtifactSetForRequestJson
+            ? (setJson, requestJson) =>
+                  binding.verifyArtifactSetForRequestJson!(setJson, requestJson)
             : undefined,
         capabilities: caps ? () => caps : undefined,
     };

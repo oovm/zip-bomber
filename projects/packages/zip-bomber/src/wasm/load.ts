@@ -28,12 +28,16 @@ type WasmBinding = {
     planVariantJson?: (variant: string) => string;
     planRequestJson?: (requestJson: string) => string;
     verifyZipBytesJson?: (bytesBase64: string) => string;
+    verifyArtifactSetJson?: (setJson: string, specJson?: string | null) => string;
+    verifyArtifactSetForRequestJson?: (setJson: string, requestJson: string) => string;
     default?: ((input?: unknown) => Promise<unknown>) | {
         listVariants?: () => string;
         capabilitiesJson?: () => string;
         generateVariantJson?: (variant: string) => string;
         generateRequestJson?: (requestJson: string) => string;
         planRequestJson?: (requestJson: string) => string;
+        verifyArtifactSetJson?: (setJson: string, specJson?: string | null) => string;
+        verifyArtifactSetForRequestJson?: (setJson: string, requestJson: string) => string;
     };
 };
 
@@ -61,6 +65,11 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
     const planRequestJson = binding.planRequestJson ?? fromDefault?.planRequestJson;
     const capabilitiesJson =
         binding.capabilitiesJson ?? fromDefault?.capabilitiesJson;
+    const verifyArtifactSetJson =
+        binding.verifyArtifactSetJson ?? fromDefault?.verifyArtifactSetJson;
+    const verifyArtifactSetForRequestJson =
+        binding.verifyArtifactSetForRequestJson ??
+        fromDefault?.verifyArtifactSetForRequestJson;
     return {
         planRequestJson: planRequestJson
             ? (requestJson) => {
@@ -99,6 +108,36 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
                       errorMessage: raw.error?.message,
                   };
               } : undefined,
+        verifyArtifactSetJson: verifyArtifactSetJson
+            ? (setJson, specJson) => {
+                  const raw = JSON.parse(
+                      verifyArtifactSetJson(setJson, specJson ?? undefined),
+                  );
+                  return {
+                      exitCode: raw.ok ? 0 : 1,
+                      ok: raw.ok,
+                      reportJson: JSON.stringify(raw.report ?? {}),
+                      errorCategory: raw.error?.category,
+                      errorCode: raw.error?.code,
+                      errorMessage: raw.error?.message,
+                  };
+              }
+            : undefined,
+        verifyArtifactSetForRequestJson: verifyArtifactSetForRequestJson
+            ? (setJson, requestJson) => {
+                  const raw = JSON.parse(
+                      verifyArtifactSetForRequestJson(setJson, requestJson),
+                  );
+                  return {
+                      exitCode: raw.ok ? 0 : 1,
+                      ok: raw.ok,
+                      reportJson: JSON.stringify(raw.report ?? {}),
+                      errorCategory: raw.error?.category,
+                      errorCode: raw.error?.code,
+                      errorMessage: raw.error?.message,
+                  };
+              }
+            : undefined,
         generateRequestJson: generateRequestJson
             ? (requestJson) => {
                   const raw = JSON.parse(generateRequestJson(requestJson)) as {
