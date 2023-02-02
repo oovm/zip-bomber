@@ -9,6 +9,7 @@
     "zb.cli.opt.variant": "变体 id：bomb、quine、loopy 或 fractal",
     "zb.cli.opt.output": "输出归档路径",
     "zb.cli.opt.input": "待复验的输入归档路径",
+    "zb.cli.opt.verifyDir": "已发布的 artifact set 目录（manifest.json 与各归档）",
     "zb.cli.opt.locale": "CLI 语言（BCP-47）",
     "zb.cli.opt.request": "结构化 zb.job/v1 请求文件（与结构 flags 互斥）",
     "zb.cli.opt.quineName": "归档内的自引用成员路径",

@@ -105,6 +105,21 @@ test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
     const again = run("--json", "generate", "--request", jobPath, "--output", output);
     assert.equal(again.status, 1);
     assert.deepEqual(readFileSync(join(output, "alpha.zip")), alpha);
+
+    const structure = run("--json", "verify", "--dir", output);
+    assert.equal(structure.status, 0, structure.stderr);
+    assert.equal(JSON.parse(structure.stdout).ok, true);
+
+    const cycle = run("--json", "verify", "--dir", output, "--request", jobPath);
+    assert.equal(cycle.status, 0, cycle.stderr);
+    const cycleBody = JSON.parse(cycle.stdout);
+    assert.equal(cycleBody.ok, true);
+    assert.equal(cycleBody.value.cycle?.byte_period, 2);
+    assert.equal(cycleBody.value.cycle?.edges?.length, 2);
+    assert.ok(cycleBody.value.cycle.edges.every((edge: { bytes_equal: boolean }) => edge.bytes_equal));
+
+    const mixed = run("--json", "verify", "--input", join(output, "alpha.zip"), "--dir", output);
+    assert.equal(mixed.status, 1);
 });
 
 test("CLI zb.job/v1 publishes a Quine with directoryEntry input", () => {
@@ -136,6 +151,16 @@ test("CLI help documents --request in English and Chinese", () => {
     for (const locale of ["en-US", "zh-CN"]) {
         const result = run("--locale", locale, "generate", "--help");
         assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /--request/);
+        assert.doesNotMatch(result.stdout, /\{\{zb\./);
+    }
+});
+
+test("CLI help documents verify --dir in English and Chinese", () => {
+    for (const locale of ["en-US", "zh-CN"]) {
+        const result = run("--locale", locale, "verify", "--help");
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /--dir/);
         assert.match(result.stdout, /--request/);
         assert.doesNotMatch(result.stdout, /\{\{zb\./);
     }

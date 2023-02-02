@@ -9,6 +9,7 @@
     "zb.cli.opt.variant": "Variant id: bomb, quine, loopy, or fractal",
     "zb.cli.opt.output": "Output archive path",
     "zb.cli.opt.input": "Input archive path to verify",
+    "zb.cli.opt.verifyDir": "Published artifact-set directory (manifest.json + archives)",
     "zb.cli.opt.locale": "CLI locale (BCP-47)",
     "zb.cli.opt.request": "Structured zb.job/v1 request file (mutually exclusive with structure flags)",
     "zb.cli.opt.quineName": "Self-reference member path inside the archive",
