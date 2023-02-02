@@ -1,6 +1,7 @@
 use zb_solver::{
-    crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ByteEquation, ByteTerm,
-    ConstraintProblem, EquationId, LinearEquation, SolveOutcome, SolverBudget, VariableId,
+    crc32, crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ByteEquation,
+    ByteExpr, ByteTerm, ChecksumAlgorithm, ChecksumConstraint, ConstraintProblem, EquationId,
+    LinearEquation, SolveOutcome, SolverBudget, VariableId,
 };
 
 fn eq(id: u32, vars: &[u32], rhs: bool) -> LinearEquation {
@@ -17,6 +18,7 @@ fn solves_unique_system_with_evidence() {
         variable_count: 2,
         equations: vec![eq(1, &[0, 1], true), eq(2, &[1], true)],
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: Some("demo".into()),
     };
@@ -43,6 +45,7 @@ fn reports_unsat_on_inconsistent_rows() {
         variable_count: 1,
         equations: vec![eq(1, &[0], true), eq(2, &[0], false)],
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -64,6 +67,7 @@ fn forces_free_variables_to_zero() {
         variable_count: 2,
         equations: vec![eq(1, &[0], true)],
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -89,6 +93,7 @@ fn cancels_duplicate_variable_mentions() {
         variable_count: 2,
         equations: vec![eq(1, &[0, 0, 1], true)],
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -106,6 +111,7 @@ fn rejects_out_of_range_variable() {
         variable_count: 1,
         equations: vec![eq(1, &[3], true)],
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -170,6 +176,7 @@ fn enforces_matrix_bit_budget() {
         variable_count: 8,
         equations: vec![eq(1, &[0], true), eq(2, &[1], false)],
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget: SolverBudget {
             max_variables: 64,
             max_equations: 64,
@@ -199,6 +206,7 @@ fn reduces_byte_constant_to_bits() {
         variable_count: 8,
         equations: Vec::new(),
         byte_equations: vec![byte_eq(9, ByteTerm::Variable(0), ByteTerm::Constant(0xA5))],
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -226,6 +234,7 @@ fn byte_constant_conflict_names_equation() {
             byte_eq(1, ByteTerm::Variable(0), ByteTerm::Constant(1)),
             byte_eq(2, ByteTerm::Variable(0), ByteTerm::Constant(2)),
         ],
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -247,6 +256,7 @@ fn byte_copies_share_a_constant() {
             byte_eq(1, ByteTerm::Variable(0), ByteTerm::Variable(1)),
             byte_eq(2, ByteTerm::Variable(1), ByteTerm::Constant(0x3C)),
         ],
+        checksums: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -264,5 +274,120 @@ fn byte_copies_share_a_constant() {
             assert_eq!(value, 0x3C);
         }
         other => panic!("expected Sat, got {other:?}"),
+    }
+}
+
+fn le_target(crc: u32) -> [ByteExpr; 4] {
+    [
+        ByteExpr::Constant((crc & 0xff) as u8),
+        ByteExpr::Constant(((crc >> 8) & 0xff) as u8),
+        ByteExpr::Constant(((crc >> 16) & 0xff) as u8),
+        ByteExpr::Constant(((crc >> 24) & 0xff) as u8),
+    ]
+}
+
+#[test]
+fn checksum_accepts_matching_constant_message() {
+    let message = b"123456789";
+    let problem = ConstraintProblem {
+        variable_count: 0,
+        equations: Vec::new(),
+        byte_equations: Vec::new(),
+        checksums: vec![ChecksumConstraint {
+            id: EquationId(4),
+            algorithm: ChecksumAlgorithm::Crc32Ieee,
+            message: message.iter().copied().map(ByteExpr::Constant).collect(),
+            target: le_target(crc32(message)),
+        }],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    assert!(matches!(solve_problem(&problem), SolveOutcome::Sat { .. }));
+}
+
+#[test]
+fn checksum_rejects_wrong_constant_and_names_equation() {
+    let problem = ConstraintProblem {
+        variable_count: 0,
+        equations: Vec::new(),
+        byte_equations: Vec::new(),
+        checksums: vec![ChecksumConstraint {
+            id: EquationId(7),
+            algorithm: ChecksumAlgorithm::Crc32Ieee,
+            message: vec![ByteExpr::Constant(1)],
+            target: le_target(0),
+        }],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    match solve_problem(&problem) {
+        SolveOutcome::Unsat {
+            conflicting_equation,
+            ..
+        } => assert_eq!(conflicting_equation, Some(EquationId(7))),
+        other => panic!("expected Unsat, got {other:?}"),
+    }
+}
+
+#[test]
+fn checksum_solves_one_affine_byte() {
+    let problem = ConstraintProblem {
+        variable_count: 8,
+        equations: Vec::new(),
+        byte_equations: Vec::new(),
+        checksums: vec![ChecksumConstraint {
+            id: EquationId(3),
+            algorithm: ChecksumAlgorithm::Crc32Ieee,
+            message: vec![ByteExpr::Xor(vec![
+                ByteExpr::Constant(0x01),
+                ByteExpr::Variable(0),
+            ])],
+            target: le_target(crc32(&[0x43])),
+        }],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    match solve_problem(&problem) {
+        SolveOutcome::Sat {
+            assignment, unique, ..
+        } => {
+            assert!(unique);
+            let mut value = 0u8;
+            for bit in 0..8 {
+                if assignment.bits[bit] {
+                    value |= 1 << bit;
+                }
+            }
+            assert_eq!(value, 0x42);
+            assert_eq!(crc32(&[0x01 ^ value]), crc32(&[0x43]));
+        }
+        other => panic!("expected Sat, got {other:?}"),
+    }
+}
+
+#[test]
+fn deep_xor_nesting_is_rejected_not_spun() {
+    let mut expr = ByteExpr::Constant(0);
+    for _ in 0..300 {
+        expr = ByteExpr::Xor(vec![expr, ByteExpr::Constant(0)]);
+    }
+    let problem = ConstraintProblem {
+        variable_count: 0,
+        equations: Vec::new(),
+        byte_equations: Vec::new(),
+        checksums: vec![ChecksumConstraint {
+            id: EquationId(1),
+            algorithm: ChecksumAlgorithm::Crc32Ieee,
+            message: vec![expr],
+            target: le_target(0),
+        }],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    match solve_problem(&problem) {
+        SolveOutcome::InvalidProblem { message } => {
+            assert!(message.contains("exceeds"));
+        }
+        other => panic!("expected InvalidProblem, got {other:?}"),
     }
 }

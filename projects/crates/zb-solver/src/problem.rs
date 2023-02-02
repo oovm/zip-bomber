@@ -4,6 +4,7 @@
 //! equations, enforces solver budgets, and delegates elimination to [`crate::gf2`].
 
 use crate::cancel::CancelToken;
+use crate::crc::{crc32, crc32_shared_columns, CrcByteSlot};
 use crate::gf2::{solve_with_cancel, BitMatrix, Gf2Solution};
 use crate::{Assignment, EquationId, VariableId};
 use zb_types::{ErrorCategory, ErrorCode, ZbError, ZbResult};
@@ -53,6 +54,37 @@ pub struct ByteEquation {
     pub right: ByteTerm,
 }
 
+/// Registered checksum. Only IEEE CRC-32 is affine in this solver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChecksumAlgorithm {
+    /// Reflected IEEE CRC-32, init/final XOR `0xffffffff`.
+    Crc32Ieee,
+}
+
+/// Affine byte: a constant, a shared byte variable, or their XOR.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ByteExpr {
+    /// Fixed byte.
+    Constant(u8),
+    /// Byte variable. Bits occupy `index * 8 .. index * 8 + 8`, least-significant bit first.
+    Variable(u32),
+    /// XOR of nested affine bytes. Repeated variable indices cancel in pairs.
+    Xor(Vec<ByteExpr>),
+}
+
+/// IEEE CRC-32 of an affine message equals a 4-byte little-endian affine target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChecksumConstraint {
+    /// Stable identity for every residual row and for back-substitution failure.
+    pub id: EquationId,
+    /// Checksum algorithm. Unknown algorithms are not representable.
+    pub algorithm: ChecksumAlgorithm,
+    /// Message bytes in order.
+    pub message: Vec<ByteExpr>,
+    /// Little-endian CRC-32 target.
+    pub target: [ByteExpr; 4],
+}
+
 /// One GF(2) XOR equation over named bit variables.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinearEquation {
@@ -73,6 +105,8 @@ pub struct ConstraintProblem {
     pub equations: Vec<LinearEquation>,
     /// Byte equalities reduced before the bit matrix is built.
     pub byte_equations: Vec<ByteEquation>,
+    /// Affine checksum constraints expanded into 32 GF(2) rows each.
+    pub checksums: Vec<ChecksumConstraint>,
     /// Resource ceilings for this solve.
     pub budget: SolverBudget,
     /// Optional opaque digest of the frozen skeleton (evidence only).
@@ -191,10 +225,12 @@ impl ConstraintProblem {
                 }
             }
         }
+        let checksum_rows = self.checksums.len().saturating_mul(32);
         let total_equations = self
             .equations
             .len()
-            .saturating_add(self.byte_equations.len());
+            .saturating_add(self.byte_equations.len())
+            .saturating_add(checksum_rows);
         if total_equations as u32 > self.budget.max_equations {
             return Err(ZbError::new(
                 ErrorCode::ResourceLimited,
@@ -235,9 +271,15 @@ struct ByteClass {
 }
 
 fn find_byte(nodes: &mut [ByteClass], mut index: u32) -> u32 {
-    while nodes[index as usize].parent != index {
+    // Union-find is acyclic by construction. Bound the walk so a corrupted parent
+    // never spins forever.
+    for _ in 0..=nodes.len() {
         let parent = nodes[index as usize].parent;
-        nodes[index as usize].parent = nodes[parent as usize].parent;
+        if parent == index {
+            return index;
+        }
+        let grand = nodes[parent as usize].parent;
+        nodes[index as usize].parent = grand;
         index = parent;
     }
     index
@@ -395,6 +437,142 @@ fn term_byte(term: ByteTerm, bits: &[bool]) -> u8 {
     }
 }
 
+const MAX_BYTE_EXPR_NODES: usize = 256;
+
+fn flatten_byte(expr: &ByteExpr) -> Result<(u8, Vec<u32>), SolveOutcome> {
+    // Iterative walk with a hard node budget. Nested `Xor` never recurses.
+    let mut constant = 0u8;
+    let mut vars = Vec::new();
+    let mut stack = vec![expr];
+    let mut seen = 0usize;
+    while let Some(node) = stack.pop() {
+        seen = seen.saturating_add(1);
+        if seen > MAX_BYTE_EXPR_NODES {
+            return Err(SolveOutcome::InvalidProblem {
+                message: format!("byte expression exceeds {MAX_BYTE_EXPR_NODES} nodes"),
+            });
+        }
+        match node {
+            ByteExpr::Constant(value) => constant ^= value,
+            ByteExpr::Variable(index) => {
+                if let Some(pos) = vars.iter().position(|existing| *existing == *index) {
+                    vars.swap_remove(pos);
+                } else {
+                    vars.push(*index);
+                }
+            }
+            ByteExpr::Xor(parts) => {
+                for part in parts.iter().rev() {
+                    stack.push(part);
+                }
+            }
+        }
+    }
+    Ok((constant, vars))
+}
+
+fn byte_var_in_range(problem: &ConstraintProblem, index: u32) -> Result<(), SolveOutcome> {
+    let last = index.checked_mul(8).and_then(|base| base.checked_add(7));
+    match last {
+        Some(last) if last < problem.variable_count => Ok(()),
+        _ => Err(SolveOutcome::InvalidProblem {
+            message: format!(
+                "byte variable {index} needs bits {index}*8..{index}*8+8 inside 0..{}",
+                problem.variable_count
+            ),
+        }),
+    }
+}
+
+fn eval_byte(expr: &ByteExpr, bits: &[bool]) -> Result<u8, SolveOutcome> {
+    let (mut value, vars) = flatten_byte(expr)?;
+    for var in vars {
+        for bit in 0..8 {
+            if bits[var as usize * 8 + bit] {
+                value ^= 1 << bit;
+            }
+        }
+    }
+    Ok(value)
+}
+
+fn checksum_rows(
+    problem: &ConstraintProblem,
+) -> Result<Vec<(EquationId, Vec<bool>, bool)>, SolveOutcome> {
+    let cols = problem.variable_count as usize;
+    let mut rows = Vec::new();
+    for constraint in &problem.checksums {
+        if constraint.algorithm != ChecksumAlgorithm::Crc32Ieee {
+            return Err(SolveOutcome::InvalidProblem {
+                message: "only IEEE CRC-32 checksum constraints are registered".into(),
+            });
+        }
+        let mut constants = Vec::with_capacity(constraint.message.len());
+        let mut occurrences = Vec::new();
+        for expr in &constraint.message {
+            let (constant, vars) = flatten_byte(expr)?;
+            for var in &vars {
+                byte_var_in_range(problem, *var)?;
+            }
+            occurrences.push((constants.len(), vars));
+            constants.push(constant);
+        }
+        let crc_const = crc32(&constants);
+        let mut influence = vec![0u32; cols];
+        let zeros = vec![0u8; constants.len()];
+        for (offset, vars) in &occurrences {
+            if vars.is_empty() {
+                continue;
+            }
+            // One template for this offset. XOR participants share the same CRC
+            // bit columns (duplicate offsets are illegal in crc32_shared_columns).
+            let (_, columns) = crc32_shared_columns(
+                &zeros,
+                &[CrcByteSlot {
+                    offset: *offset,
+                    variable: 0,
+                }],
+                1,
+            )
+            .map_err(|err| SolveOutcome::InternalError {
+                message: err.message,
+            })?;
+            for var in vars {
+                for bit in 0..8 {
+                    influence[*var as usize * 8 + bit] ^= columns[bit];
+                }
+            }
+        }
+        let mut target_const = 0u32;
+        let mut target_coeff = vec![0u32; cols];
+        for (index, expr) in constraint.target.iter().enumerate() {
+            let (constant, vars) = flatten_byte(expr)?;
+            for var in &vars {
+                byte_var_in_range(problem, *var)?;
+            }
+            target_const |= u32::from(constant) << (8 * index);
+            for var in vars {
+                for bit in 0..8 {
+                    target_coeff[var as usize * 8 + bit] |= 1u32 << (index * 8 + bit);
+                }
+            }
+        }
+        let rhs_word = crc_const ^ target_const;
+        for row in 0..32 {
+            let mut bits = vec![false; cols];
+            for col in 0..cols {
+                let from_message = (influence[col] >> row) & 1 == 1;
+                let from_target = (target_coeff[col] >> row) & 1 == 1;
+                if from_message ^ from_target {
+                    bits[col] = true;
+                }
+            }
+            rows.push((constraint.id, bits, (rhs_word >> row) & 1 == 1));
+        }
+    }
+    Ok(rows)
+}
+
 fn back_substitute(problem: &ConstraintProblem, bits: &[bool]) -> Option<EquationId> {
     for eq in &problem.equations {
         let mut acc = false;
@@ -408,6 +586,25 @@ fn back_substitute(problem: &ConstraintProblem, bits: &[bool]) -> Option<Equatio
     for eq in &problem.byte_equations {
         if term_byte(eq.left, bits) != term_byte(eq.right, bits) {
             return Some(eq.id);
+        }
+    }
+    for constraint in &problem.checksums {
+        let mut message = Vec::with_capacity(constraint.message.len());
+        for expr in &constraint.message {
+            match eval_byte(expr, bits) {
+                Ok(byte) => message.push(byte),
+                Err(_) => return Some(constraint.id),
+            }
+        }
+        let mut target = 0u32;
+        for (index, expr) in constraint.target.iter().enumerate() {
+            match eval_byte(expr, bits) {
+                Ok(byte) => target |= u32::from(byte) << (8 * index),
+                Err(_) => return Some(constraint.id),
+            }
+        }
+        if crc32(&message) != target {
+            return Some(constraint.id);
         }
     }
     None
@@ -483,6 +680,7 @@ pub fn crc_identity_residual_problem(
         variable_count: variable_bits,
         equations,
         byte_equations: Vec::new(),
+        checksums: Vec::new(),
         budget,
         problem_digest,
     })
@@ -556,7 +754,11 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
         Ok(rows) => rows,
         Err(outcome) => return outcome,
     };
-    let row_count = problem.equations.len() + byte_derived.len();
+    let checksum_derived = match checksum_rows(problem) {
+        Ok(rows) => rows,
+        Err(outcome) => return outcome,
+    };
+    let row_count = problem.equations.len() + byte_derived.len() + checksum_derived.len();
     if row_count as u32 > problem.budget.max_equations {
         return SolveOutcome::ResourceLimited {
             message: format!(
@@ -603,6 +805,23 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
             };
         }
         let row = problem.equations.len() + offset;
+        row_ids.push(*id);
+        for (col, bit) in bits.iter().enumerate() {
+            if *bit {
+                matrix.set(row, col);
+            }
+        }
+        if *rhs {
+            matrix.set(row, cols);
+        }
+    }
+    for (offset, (id, bits, rhs)) in checksum_derived.iter().enumerate() {
+        if let Err(err) = cancel.check() {
+            return SolveOutcome::Cancelled {
+                message: err.message,
+            };
+        }
+        let row = problem.equations.len() + byte_derived.len() + offset;
         row_ids.push(*id);
         for (col, bit) in bits.iter().enumerate() {
             if *bit {

@@ -19,7 +19,8 @@ pub use crc::{
 pub use gf2::{solve, solve_rows, solve_rows_with_cancel, solve_with_cancel, BitMatrix, Gf2Solution};
 pub use problem::{
     crc_identity_residual_problem, solve_crc_identity_blocks, solve_crc_identity_blocks_with_cancel,
-    solve_problem, solve_problem_with_cancel, ByteEquation, ByteTerm, ConstraintProblem,
+    solve_problem, solve_problem_with_cancel, ByteEquation, ByteExpr, ByteTerm, ChecksumAlgorithm,
+    ChecksumConstraint, ConstraintProblem,
     LinearEquation, SolveEvidence,
     SolveOutcome, SolverBudget,
 };
