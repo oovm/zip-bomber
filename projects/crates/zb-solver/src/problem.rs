@@ -29,6 +29,30 @@ impl Default for SolverBudget {
     }
 }
 
+/// One byte of a frozen layout: a constant or a shared byte variable.
+///
+/// [`ByteTerm::Variable`] indexes a byte, not a bit. Its eight bits occupy
+/// `index * 8 .. index * 8 + 8` inside [`ConstraintProblem::variable_count`],
+/// least-significant bit first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ByteTerm {
+    /// Fixed byte.
+    Constant(u8),
+    /// Shared byte variable.
+    Variable(u32),
+}
+
+/// Equality of two byte terms. Reduced before GF(2) elimination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ByteEquation {
+    /// Stable identity reported on conflict and back-substitution failure.
+    pub id: EquationId,
+    /// Left side.
+    pub left: ByteTerm,
+    /// Right side.
+    pub right: ByteTerm,
+}
+
 /// One GF(2) XOR equation over named bit variables.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinearEquation {
@@ -47,6 +71,8 @@ pub struct ConstraintProblem {
     pub variable_count: u32,
     /// Ordered linear equations.
     pub equations: Vec<LinearEquation>,
+    /// Byte equalities reduced before the bit matrix is built.
+    pub byte_equations: Vec<ByteEquation>,
     /// Resource ceilings for this solve.
     pub budget: SolverBudget,
     /// Optional opaque digest of the frozen skeleton (evidence only).
@@ -165,8 +191,232 @@ impl ConstraintProblem {
                 }
             }
         }
+        let total_equations = self
+            .equations
+            .len()
+            .saturating_add(self.byte_equations.len());
+        if total_equations as u32 > self.budget.max_equations {
+            return Err(ZbError::new(
+                ErrorCode::ResourceLimited,
+                format!(
+                    "equation count {total_equations} exceeds budget.max_equations {}",
+                    self.budget.max_equations
+                ),
+            ));
+        }
+        for eq in &self.byte_equations {
+            for term in [eq.left, eq.right] {
+                if let ByteTerm::Variable(index) = term {
+                    let last = index
+                        .checked_mul(8)
+                        .and_then(|base| base.checked_add(7))
+                        .ok_or_else(|| {
+                            ZbError::resource_limited("byte variable bit range overflow")
+                        })?;
+                    if last >= self.variable_count {
+                        return Err(ZbError::new(
+                            ErrorCode::InvalidTopology,
+                            format!(
+                                "byte equation {:?} variable {index} needs bits {index}*8..{index}*8+8 inside 0..{}",
+                                eq.id, self.variable_count
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
         Ok(())
     }
+}
+
+struct ByteClass {
+    parent: u32,
+    constant: Option<(u8, EquationId)>,
+}
+
+fn find_byte(nodes: &mut [ByteClass], mut index: u32) -> u32 {
+    while nodes[index as usize].parent != index {
+        let parent = nodes[index as usize].parent;
+        nodes[index as usize].parent = nodes[parent as usize].parent;
+        index = parent;
+    }
+    index
+}
+
+/// Reduce byte equalities to a constant binding per class plus copy links.
+fn reduce_byte_equations(
+    equations: &[ByteEquation],
+) -> Result<(Vec<(u32, u8, EquationId)>, Vec<(u32, u32, EquationId)>), (EquationId, String)> {
+    let mut max_var = 0u32;
+    for eq in equations {
+        for term in [eq.left, eq.right] {
+            if let ByteTerm::Variable(index) = term {
+                max_var = max_var.max(index + 1);
+            }
+        }
+    }
+    let mut nodes: Vec<ByteClass> = (0..max_var)
+        .map(|index| ByteClass {
+            parent: index,
+            constant: None,
+        })
+        .collect();
+    let mut links = Vec::new();
+    for eq in equations {
+        match (eq.left, eq.right) {
+            (ByteTerm::Constant(left), ByteTerm::Constant(right)) => {
+                if left != right {
+                    return Err((
+                        eq.id,
+                        format!("byte constants {left:#04x} and {right:#04x} differ"),
+                    ));
+                }
+            }
+            (ByteTerm::Variable(var), ByteTerm::Constant(value))
+            | (ByteTerm::Constant(value), ByteTerm::Variable(var)) => {
+                let root = find_byte(&mut nodes, var);
+                match nodes[root as usize].constant {
+                    Some((existing, _)) if existing != value => {
+                        return Err((
+                            eq.id,
+                            format!(
+                                "byte variable {var} is bound to {existing:#04x} and {value:#04x}"
+                            ),
+                        ));
+                    }
+                    Some(_) => {}
+                    None => nodes[root as usize].constant = Some((value, eq.id)),
+                }
+            }
+            (ByteTerm::Variable(left), ByteTerm::Variable(right)) => {
+                let mut a = find_byte(&mut nodes, left);
+                let mut b = find_byte(&mut nodes, right);
+                if a == b {
+                    continue;
+                }
+                if a > b {
+                    std::mem::swap(&mut a, &mut b);
+                }
+                match (nodes[a as usize].constant, nodes[b as usize].constant) {
+                    (Some((x, _)), Some((y, _))) if x != y => {
+                        return Err((
+                            eq.id,
+                            format!("byte copies are bound to {x:#04x} and {y:#04x}"),
+                        ));
+                    }
+                    (None, Some(value)) => nodes[a as usize].constant = Some(value),
+                    _ => {}
+                }
+                nodes[b as usize].parent = a;
+                nodes[b as usize].constant = None;
+                links.push((b, a, eq.id));
+            }
+        }
+    }
+    for index in 0..max_var {
+        let _ = find_byte(&mut nodes, index);
+    }
+    let bindings = nodes
+        .iter()
+        .enumerate()
+        .filter(|(index, node)| node.parent == *index as u32)
+        .filter_map(|(index, node)| {
+            node.constant
+                .map(|(value, id)| (index as u32, value, id))
+        })
+        .collect();
+    Ok((bindings, links))
+}
+
+fn push_linear(
+    rows: &mut Vec<(EquationId, Vec<bool>, bool)>,
+    cols: usize,
+    id: EquationId,
+    variables: &[(usize, bool)],
+) {
+    let mut bits = vec![false; cols];
+    let mut rhs = false;
+    for &(index, value) in variables {
+        bits[index] = !bits[index];
+        rhs ^= value;
+    }
+    rows.push((id, bits, rhs));
+}
+
+fn byte_rows(
+    problem: &ConstraintProblem,
+) -> Result<Vec<(EquationId, Vec<bool>, bool)>, SolveOutcome> {
+    let (bindings, links) = reduce_byte_equations(&problem.byte_equations).map_err(
+        |(id, message)| SolveOutcome::Unsat {
+            message,
+            conflicting_equation: Some(id),
+        },
+    )?;
+    let cols = problem.variable_count as usize;
+    let mut rows = Vec::new();
+    for (index, value, id) in bindings {
+        for bit in 0..8 {
+            push_linear(
+                &mut rows,
+                cols,
+                id,
+                &[(index as usize * 8 + bit, (value >> bit) & 1 == 1)],
+            );
+        }
+    }
+    for (child, parent, id) in links {
+        for bit in 0..8 {
+            push_linear(
+                &mut rows,
+                cols,
+                id,
+                &[
+                    (child as usize * 8 + bit, false),
+                    (parent as usize * 8 + bit, false),
+                ],
+            );
+        }
+    }
+    Ok(rows)
+}
+
+fn term_byte(term: ByteTerm, bits: &[bool]) -> u8 {
+    match term {
+        ByteTerm::Constant(value) => value,
+        ByteTerm::Variable(index) => {
+            let mut value = 0u8;
+            for bit in 0..8 {
+                if bits[index as usize * 8 + bit] {
+                    value |= 1 << bit;
+                }
+            }
+            value
+        }
+    }
+}
+
+fn back_substitute(problem: &ConstraintProblem, bits: &[bool]) -> Option<EquationId> {
+    for eq in &problem.equations {
+        let mut acc = false;
+        for var in &eq.variables {
+            acc ^= bits[var.0 as usize];
+        }
+        if acc != eq.rhs {
+            return Some(eq.id);
+        }
+    }
+    for eq in &problem.byte_equations {
+        if term_byte(eq.left, bits) != term_byte(eq.right, bits) {
+            return Some(eq.id);
+        }
+    }
+    None
+}
+
+fn inconsistent_row(message: &str) -> Option<usize> {
+    let rest = message.strip_prefix("gf2_inconsistent_row=")?;
+    let token = rest.split_whitespace().next()?;
+    token.parse().ok()
 }
 
 /// Build the stacked CRC residual system `(I XOR M) x = b`.
@@ -229,9 +479,10 @@ pub fn crc_identity_residual_problem(
             eq_id += 1;
         }
     }
-    Ok(ConstraintProblem {
+        Ok(ConstraintProblem {
         variable_count: variable_bits,
         equations,
+        byte_equations: Vec::new(),
         budget,
         problem_digest,
     })
@@ -301,19 +552,40 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
     }
 
     let cols = problem.variable_count as usize;
-    let rows = problem.equations.len();
-    let mut matrix = BitMatrix::zeros(rows, cols);
+    let byte_derived = match byte_rows(problem) {
+        Ok(rows) => rows,
+        Err(outcome) => return outcome,
+    };
+    let row_count = problem.equations.len() + byte_derived.len();
+    if row_count as u32 > problem.budget.max_equations {
+        return SolveOutcome::ResourceLimited {
+            message: format!(
+                "expanded equation count {row_count} exceeds budget.max_equations {}",
+                problem.budget.max_equations
+            ),
+        };
+    }
+    let cells = (row_count as u64).saturating_mul((cols as u64).saturating_add(1));
+    if cells > problem.budget.max_matrix_bits {
+        return SolveOutcome::ResourceLimited {
+            message: format!(
+                "matrix cells {cells} exceed budget.max_matrix_bits {}",
+                problem.budget.max_matrix_bits
+            ),
+        };
+    }
+    let mut row_ids = Vec::with_capacity(row_count);
+    let mut matrix = BitMatrix::zeros(row_count, cols);
     for (row, eq) in problem.equations.iter().enumerate() {
         if let Err(err) = cancel.check() {
             return SolveOutcome::Cancelled {
                 message: err.message,
             };
         }
-        // XOR duplicate variable indices so they cancel over GF(2).
+        row_ids.push(eq.id);
         let mut bits = vec![false; cols];
         for var in &eq.variables {
-            let idx = var.0 as usize;
-            bits[idx] = !bits[idx];
+            bits[var.0 as usize] = !bits[var.0 as usize];
         }
         for (col, bit) in bits.iter().enumerate() {
             if *bit {
@@ -324,13 +596,36 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
             matrix.set(row, cols);
         }
     }
+    for (offset, (id, bits, rhs)) in byte_derived.iter().enumerate() {
+        if let Err(err) = cancel.check() {
+            return SolveOutcome::Cancelled {
+                message: err.message,
+            };
+        }
+        let row = problem.equations.len() + offset;
+        row_ids.push(*id);
+        for (col, bit) in bits.iter().enumerate() {
+            if *bit {
+                matrix.set(row, col);
+            }
+        }
+        if *rhs {
+            matrix.set(row, cols);
+        }
+    }
 
     match solve_with_cancel(matrix, cancel) {
         Ok(sol) => {
+            if let Some(id) = back_substitute(problem, &sol.assignment) {
+                return SolveOutcome::Unsat {
+                    message: format!("back-substitution failed for equation {}", id.0),
+                    conflicting_equation: Some(id),
+                };
+            }
             let evidence = SolveEvidence {
                 rank: sol.rank,
                 free_bits: cols.saturating_sub(sol.rank),
-                equations_used: rows,
+                equations_used: row_count,
                 problem_digest: problem.problem_digest.clone(),
             };
             SolveOutcome::from_gf2(sol, evidence)
@@ -341,9 +636,10 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
                     message: err.message,
                 }
             } else if err.category == ErrorCategory::ConstraintUnsatisfied {
+                let conflicting_equation = inconsistent_row(&err.message).and_then(|row| row_ids.get(row).copied());
                 SolveOutcome::Unsat {
                     message: err.message,
-                    conflicting_equation: None,
+                    conflicting_equation,
                 }
             } else {
                 SolveOutcome::InternalError {

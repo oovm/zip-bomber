@@ -35,6 +35,7 @@ fn solve_problem_maps_cancel_to_outcome() {
             variables: vec![VariableId(0)],
             rhs: true,
         }],
+        byte_equations: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };

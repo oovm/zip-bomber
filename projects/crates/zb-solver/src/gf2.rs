@@ -97,6 +97,7 @@ pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResul
     let rows = matrix.rows;
     let cols = matrix.cols;
     let mut pivot_of_col = vec![None; cols];
+    let mut origin: Vec<usize> = (0..rows).collect();
     let mut row = 0usize;
 
     cancel.check()?;
@@ -116,6 +117,7 @@ pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResul
             continue;
         };
         matrix.swap_rows(row, piv);
+        origin.swap(row, piv);
         for r in 0..rows {
             if r != row && matrix.get(r, col) {
                 matrix.xor_row_into(r, row);
@@ -138,7 +140,10 @@ pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResul
             return Err(ZbError {
                 category: ErrorCategory::ConstraintUnsatisfied,
                 code: ErrorCode::Internal,
-                message: "GF(2) system is inconsistent (0 = 1)".to_string(),
+                message: format!(
+                    "gf2_inconsistent_row={} GF(2) system is inconsistent (0 = 1)",
+                    origin[r]
+                ),
             });
         }
     }

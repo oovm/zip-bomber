@@ -1,6 +1,6 @@
 use zb_solver::{
-    crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ConstraintProblem,
-    EquationId, LinearEquation, SolveOutcome, SolverBudget, VariableId,
+    crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ByteEquation, ByteTerm,
+    ConstraintProblem, EquationId, LinearEquation, SolveOutcome, SolverBudget, VariableId,
 };
 
 fn eq(id: u32, vars: &[u32], rhs: bool) -> LinearEquation {
@@ -16,6 +16,7 @@ fn solves_unique_system_with_evidence() {
     let problem = ConstraintProblem {
         variable_count: 2,
         equations: vec![eq(1, &[0, 1], true), eq(2, &[1], true)],
+        byte_equations: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: Some("demo".into()),
     };
@@ -41,12 +42,17 @@ fn reports_unsat_on_inconsistent_rows() {
     let problem = ConstraintProblem {
         variable_count: 1,
         equations: vec![eq(1, &[0], true), eq(2, &[0], false)],
+        byte_equations: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
     match solve_problem(&problem) {
-        SolveOutcome::Unsat { message, .. } => {
-            assert!(!message.is_empty());
+        SolveOutcome::Unsat {
+            message,
+            conflicting_equation,
+        } => {
+            assert!(message.contains("gf2_inconsistent_row="));
+            assert_eq!(conflicting_equation, Some(EquationId(2)));
         }
         other => panic!("expected Unsat, got {other:?}"),
     }
@@ -57,6 +63,7 @@ fn forces_free_variables_to_zero() {
     let problem = ConstraintProblem {
         variable_count: 2,
         equations: vec![eq(1, &[0], true)],
+        byte_equations: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -81,6 +88,7 @@ fn cancels_duplicate_variable_mentions() {
     let problem = ConstraintProblem {
         variable_count: 2,
         equations: vec![eq(1, &[0, 0, 1], true)],
+        byte_equations: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -97,6 +105,7 @@ fn rejects_out_of_range_variable() {
     let problem = ConstraintProblem {
         variable_count: 1,
         equations: vec![eq(1, &[3], true)],
+        byte_equations: Vec::new(),
         budget: SolverBudget::default(),
         problem_digest: None,
     };
@@ -160,6 +169,7 @@ fn enforces_matrix_bit_budget() {
     let problem = ConstraintProblem {
         variable_count: 8,
         equations: vec![eq(1, &[0], true), eq(2, &[1], false)],
+        byte_equations: Vec::new(),
         budget: SolverBudget {
             max_variables: 64,
             max_equations: 64,
@@ -172,5 +182,87 @@ fn enforces_matrix_bit_budget() {
             assert!(message.contains("max_matrix_bits"));
         }
         other => panic!("expected ResourceLimited, got {other:?}"),
+    }
+}
+
+fn byte_eq(id: u32, left: ByteTerm, right: ByteTerm) -> ByteEquation {
+    ByteEquation {
+        id: EquationId(id),
+        left,
+        right,
+    }
+}
+
+#[test]
+fn reduces_byte_constant_to_bits() {
+    let problem = ConstraintProblem {
+        variable_count: 8,
+        equations: Vec::new(),
+        byte_equations: vec![byte_eq(9, ByteTerm::Variable(0), ByteTerm::Constant(0xA5))],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    match solve_problem(&problem) {
+        SolveOutcome::Sat { assignment, unique, .. } => {
+            assert!(unique);
+            let mut value = 0u8;
+            for bit in 0..8 {
+                if assignment.bits[bit] {
+                    value |= 1 << bit;
+                }
+            }
+            assert_eq!(value, 0xA5);
+        }
+        other => panic!("expected Sat, got {other:?}"),
+    }
+}
+
+#[test]
+fn byte_constant_conflict_names_equation() {
+    let problem = ConstraintProblem {
+        variable_count: 8,
+        equations: Vec::new(),
+        byte_equations: vec![
+            byte_eq(1, ByteTerm::Variable(0), ByteTerm::Constant(1)),
+            byte_eq(2, ByteTerm::Variable(0), ByteTerm::Constant(2)),
+        ],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    match solve_problem(&problem) {
+        SolveOutcome::Unsat {
+            conflicting_equation,
+            ..
+        } => assert_eq!(conflicting_equation, Some(EquationId(2))),
+        other => panic!("expected Unsat, got {other:?}"),
+    }
+}
+
+#[test]
+fn byte_copies_share_a_constant() {
+    let problem = ConstraintProblem {
+        variable_count: 16,
+        equations: Vec::new(),
+        byte_equations: vec![
+            byte_eq(1, ByteTerm::Variable(0), ByteTerm::Variable(1)),
+            byte_eq(2, ByteTerm::Variable(1), ByteTerm::Constant(0x3C)),
+        ],
+        budget: SolverBudget::default(),
+        problem_digest: None,
+    };
+    match solve_problem(&problem) {
+        SolveOutcome::Sat { assignment, .. } => {
+            for bit in 0..8 {
+                assert_eq!(assignment.bits[bit], assignment.bits[8 + bit]);
+            }
+            let mut value = 0u8;
+            for bit in 0..8 {
+                if assignment.bits[bit] {
+                    value |= 1 << bit;
+                }
+            }
+            assert_eq!(value, 0x3C);
+        }
+        other => panic!("expected Sat, got {other:?}"),
     }
 }
