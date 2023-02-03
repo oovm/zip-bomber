@@ -1,7 +1,8 @@
 use zb_solver::{
-    crc32, crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem, ByteEquation,
-    ByteExpr, ByteTerm, ChecksumAlgorithm, ChecksumConstraint, ConstraintProblem, EquationId,
-    LinearEquation, SolveOutcome, SolverBudget, VariableId,
+    crc32, crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem,
+    solve_shared_crc_with_cancel, ByteEquation, ByteExpr, ByteTerm, ChecksumAlgorithm,
+    ChecksumConstraint, ConstraintProblem, CrcByteSlot, EquationId, LinearEquation,
+    SharedCrcArchive, SolveOutcome, SolverBudget, VariableId,
 };
 
 fn eq(id: u32, vars: &[u32], rhs: bool) -> LinearEquation {
@@ -360,6 +361,54 @@ fn checksum_solves_one_affine_byte() {
             }
             assert_eq!(value, 0x42);
             assert_eq!(crc32(&[0x01 ^ value]), crc32(&[0x43]));
+        }
+        other => panic!("expected Sat, got {other:?}"),
+    }
+}
+
+#[test]
+fn shared_crc_helper_matches_direct_checksum() {
+    let mut bytes = b"hello!!!!".to_vec();
+    // Reserve four trailing bytes as the LE CRC word (placeholders).
+    let slots = [
+        CrcByteSlot {
+            offset: 5,
+            variable: 0,
+        },
+        CrcByteSlot {
+            offset: 6,
+            variable: 1,
+        },
+        CrcByteSlot {
+            offset: 7,
+            variable: 2,
+        },
+        CrcByteSlot {
+            offset: 8,
+            variable: 3,
+        },
+    ];
+    let outcome = solve_shared_crc_with_cancel(
+        &[SharedCrcArchive {
+            bytes: &bytes,
+            slots: &slots,
+            target_byte_vars: [0, 1, 2, 3],
+        }],
+        4,
+        SolverBudget::default(),
+        Some("shared-crc-demo".into()),
+        &zb_solver::CancelToken::new(),
+    );
+    match outcome {
+        SolveOutcome::Sat { assignment, .. } => {
+            let mut word = [0u8; 4];
+            for bit in 0..32 {
+                if assignment.bits[bit] {
+                    word[bit / 8] |= 1 << (bit % 8);
+                }
+            }
+            bytes[5..9].copy_from_slice(&word);
+            assert_eq!(crc32(&bytes), u32::from_le_bytes(word));
         }
         other => panic!("expected Sat, got {other:?}"),
     }

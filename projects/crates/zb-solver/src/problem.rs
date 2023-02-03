@@ -686,6 +686,122 @@ pub fn crc_identity_residual_problem(
     })
 }
 
+/// One self-referential archive CRC: message bytes with shared slots equal a LE word.
+#[derive(Debug, Clone, Copy)]
+pub struct SharedCrcArchive<'a> {
+    /// Frozen skeleton bytes (CRC slots may hold placeholders).
+    pub bytes: &'a [u8],
+    /// Variable byte slots inside [`Self::bytes`].
+    pub slots: &'a [CrcByteSlot],
+    /// Little-endian CRC word as four byte-variable indices.
+    pub target_byte_vars: [u32; 4],
+}
+
+/// Build a [`ChecksumConstraint`] for `CRC32(message) = target_word`.
+pub fn checksum_from_shared_slots(
+    id: EquationId,
+    archive: SharedCrcArchive<'_>,
+) -> Result<ChecksumConstraint, SolveOutcome> {
+    let mut message: Vec<ByteExpr> = archive
+        .bytes
+        .iter()
+        .map(|&b| ByteExpr::Constant(b))
+        .collect();
+    let mut seen = vec![false; archive.bytes.len()];
+    for slot in archive.slots {
+        if slot.offset >= archive.bytes.len() {
+            return Err(SolveOutcome::InvalidProblem {
+                message: format!("CRC slot offset {} out of range", slot.offset),
+            });
+        }
+        if seen[slot.offset] {
+            return Err(SolveOutcome::InvalidProblem {
+                message: format!("duplicate CRC slot offset {}", slot.offset),
+            });
+        }
+        seen[slot.offset] = true;
+        message[slot.offset] = ByteExpr::Variable(slot.variable as u32);
+    }
+    Ok(ChecksumConstraint {
+        id,
+        algorithm: ChecksumAlgorithm::Crc32Ieee,
+        message,
+        target: [
+            ByteExpr::Variable(archive.target_byte_vars[0]),
+            ByteExpr::Variable(archive.target_byte_vars[1]),
+            ByteExpr::Variable(archive.target_byte_vars[2]),
+            ByteExpr::Variable(archive.target_byte_vars[3]),
+        ],
+    })
+}
+
+/// Stack one or more self-referential CRC archives into a [`ConstraintProblem`].
+pub fn shared_crc_problem(
+    archives: &[SharedCrcArchive<'_>],
+    variable_bytes: u32,
+    budget: SolverBudget,
+    problem_digest: Option<String>,
+) -> Result<ConstraintProblem, SolveOutcome> {
+    if archives.is_empty() {
+        return Err(SolveOutcome::InvalidProblem {
+            message: "shared CRC problem requires at least one archive".into(),
+        });
+    }
+    if variable_bytes == 0 {
+        return Err(SolveOutcome::InvalidProblem {
+            message: "variable_bytes must be positive".into(),
+        });
+    }
+    let mut checksums = Vec::with_capacity(archives.len());
+    for (index, archive) in archives.iter().enumerate() {
+        for slot in archive.slots {
+            if slot.variable as u32 >= variable_bytes {
+                return Err(SolveOutcome::InvalidProblem {
+                    message: format!(
+                        "CRC slot variable {} exceeds variable_bytes {variable_bytes}",
+                        slot.variable
+                    ),
+                });
+            }
+        }
+        for &var in &archive.target_byte_vars {
+            if var >= variable_bytes {
+                return Err(SolveOutcome::InvalidProblem {
+                    message: format!(
+                        "CRC target byte variable {var} exceeds variable_bytes {variable_bytes}"
+                    ),
+                });
+            }
+        }
+        checksums.push(checksum_from_shared_slots(
+            EquationId(index as u32),
+            *archive,
+        )?);
+    }
+    Ok(ConstraintProblem {
+        variable_count: variable_bytes.saturating_mul(8),
+        equations: Vec::new(),
+        byte_equations: Vec::new(),
+        checksums,
+        budget,
+        problem_digest,
+    })
+}
+
+/// Convenience: build [`shared_crc_problem`] then [`solve_problem_with_cancel`].
+pub fn solve_shared_crc_with_cancel(
+    archives: &[SharedCrcArchive<'_>],
+    variable_bytes: u32,
+    budget: SolverBudget,
+    problem_digest: Option<String>,
+    cancel: &CancelToken,
+) -> SolveOutcome {
+    match shared_crc_problem(archives, variable_bytes, budget, problem_digest) {
+        Ok(problem) => solve_problem_with_cancel(&problem, cancel),
+        Err(outcome) => outcome,
+    }
+}
+
 /// Convenience: build [`crc_identity_residual_problem`] then [`solve_problem`].
 pub fn solve_crc_identity_blocks(
     blocks: &[(u32, &[u32])],
