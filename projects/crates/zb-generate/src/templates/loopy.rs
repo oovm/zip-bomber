@@ -158,7 +158,7 @@ pub(crate) fn encode_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::{Decompress, FlushDecompress, Status};
+    use crate::decode_raw_deflate;
     #[test]
     fn alternating_streams_reproduce_complete_opposite_archive() {
         for size in [0, 40, 257, 2048, 12000] {
@@ -182,14 +182,7 @@ mod tests {
                 expected.extend(head);
                 expected.extend(&other.bytes);
                 expected.extend(footer);
-                let mut out = vec![0; expected.len() + 1];
-                let mut decoder = Decompress::new(false);
-                let status = decoder
-                    .decompress(&stream.bytes, &mut out, FlushDecompress::Finish)
-                    .unwrap();
-                assert_eq!(status, Status::StreamEnd, "size={size}");
-                assert_eq!(decoder.total_in() as usize, stream.bytes.len());
-                out.truncate(decoder.total_out() as usize);
+                let out = decode_raw_deflate(&stream.bytes, expected.len() as u64).unwrap();
                 assert_eq!(out, expected, "size={size}");
             }
         }

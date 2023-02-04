@@ -1,11 +1,13 @@
 //! DEFLATE block planning and fixed stored/fixed-Huffman skeleton helpers.
 
 mod bits;
+mod decode;
 mod encode;
 
 use zb_types::{zip_layout, ErrorCode, GenerateRequest, ZbError, ZbResult};
 
 pub use bits::BitWriter;
+pub use decode::decode_raw_deflate;
 pub use encode::{
     encode_blocks, encode_blocks_with_finality, encode_fixed_stream, encode_stored_stream,
     DeflateBlock, FixedOp,

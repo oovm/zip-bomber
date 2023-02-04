@@ -24,6 +24,7 @@ zb-wasm = { path = "projects/crates/zb-wasm" }
 acorn-zip = { path = "../acorn.rs/examples/acorn-zip" }
 acorn-core = { path = "../acorn.rs/projects/acorn-core" }
 acorn-source = { path = "../acorn.rs/projects/acorn-source" }
+acorn-codec = { path = "../acorn.rs/projects/acorn-codec" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 wasm-bindgen = "0.2"

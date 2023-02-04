@@ -207,7 +207,7 @@ pub(crate) fn encode_recursive_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::{Decompress, FlushDecompress, Status};
+    use crate::decode_raw_deflate;
 
     #[test]
     fn complete_prefix_suffix_program_is_self_reproducing() {
@@ -226,18 +226,7 @@ mod tests {
             let mut expected = prefix.clone();
             expected.extend_from_slice(&stream.bytes);
             expected.extend_from_slice(&suffix);
-            let mut decoded = vec![0; expected.len() + 1];
-            let mut decoder = Decompress::new(false);
-            let status = decoder
-                .decompress(&stream.bytes, &mut decoded, FlushDecompress::Finish)
-                .unwrap();
-            assert_eq!(
-                status,
-                Status::StreamEnd,
-                "prefix={prefix_len} suffix={suffix_len}"
-            );
-            assert_eq!(decoder.total_in() as usize, stream.bytes.len());
-            decoded.truncate(decoder.total_out() as usize);
+            let decoded = decode_raw_deflate(&stream.bytes, expected.len() as u64).unwrap();
             assert_eq!(decoded, expected, "prefix={prefix_len} suffix={suffix_len}");
         }
     }

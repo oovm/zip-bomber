@@ -1,5 +1,4 @@
-use flate2::{Decompress, FlushDecompress, Status};
-use zb_generate::{generate, plan_generate, verify_zip_bytes};
+use zb_generate::{decode_raw_deflate, generate, plan_generate, verify_zip_bytes};
 use zb_types::{GenerateRequest, Outcome, PayloadSpec, TopologyGraph, VariantKind};
 
 fn inflate_member(archive: &[u8], local_offset: usize) -> Vec<u8> {
@@ -28,16 +27,7 @@ fn inflate_member(archive: &[u8], local_offset: usize) -> Vec<u8> {
     if method == 0 {
         return data.to_vec();
     }
-    let mut decoder = Decompress::new(false);
-    let mut out = vec![0; archive.len() + 64];
-    assert_eq!(
-        decoder
-            .decompress(data, &mut out, FlushDecompress::Finish)
-            .unwrap(),
-        Status::StreamEnd
-    );
-    out.truncate(decoder.total_out() as usize);
-    out
+    decode_raw_deflate(data, archive.len() as u64 + 64).expect("inflate attachment")
 }
 
 #[test]

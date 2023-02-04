@@ -686,7 +686,7 @@ fn verify_members(bytes: &[u8], expected: &[StoredMember]) -> ZbResult<()> {
             "graph-member",
             acorn_source::MemorySource::from_bytes("graph.zip", bytes.to_vec()),
             actual,
-            &acorn_core::ParseBudget::default(),
+            &acorn_core::Budget::default(),
         )
         .map_err(|e| {
             ZbError::verification_failed(format!(

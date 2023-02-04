@@ -1,18 +1,15 @@
 //! Strict self-referential ZIP quine (optional ordinary attachments).
 
-use std::io::Write;
-
-use flate2::write::DeflateEncoder;
-use flate2::Compression;
 use zb_solver::{
-    crc32, crc32_shared_columns, solve_crc_identity_blocks_with_cancel, CancelToken, CrcByteSlot,
-    SolveOutcome, SolverBudget,
+    crc32, solve_shared_crc_with_cancel, CancelToken, CrcByteSlot, SharedCrcArchive, SolveOutcome,
+    SolverBudget,
 };
 use zb_types::{
     Artifact, ArtifactId, ArtifactSet, ContainerKind, GenerateReport, GenerateRequest, PayloadSpec,
     ZbError, ZbResult, ZIP_PROFILE_V0,
 };
 
+use crate::deflate::{decode_raw_deflate, encode_fixed_stream, encode_stored_stream, FixedOp};
 use crate::paths::validate_quine_members;
 use crate::templates::{encode_recursive_stream, list_quine_templates, QuineTemplateMeta};
 
@@ -292,10 +289,13 @@ fn try_template(
             })
         })
         .collect();
-    let (constant, columns) = crc32_shared_columns(&archive, &slots, 4)?;
-    let outcome = solve_crc_identity_blocks_with_cancel(
-        &[(constant, columns.as_slice())],
-        32,
+    let outcome = solve_shared_crc_with_cancel(
+        &[SharedCrcArchive {
+            bytes: &archive,
+            slots: &slots,
+            target_byte_vars: [0, 1, 2, 3],
+        }],
+        4,
         SolverBudget::default(),
         Some("quine.crc.shared/v1".into()),
         cancel,
@@ -336,21 +336,10 @@ fn try_template(
         ));
     }
 
-    let mut check = flate2::Decompress::new(false);
-    let mut decoded = vec![0; archive_len + 1];
-    let status = check
-        .decompress(
-            &archive[prefix_len..prefix_len + stream.bytes.len()],
-            &mut decoded,
-            flate2::FlushDecompress::Finish,
-        )
-        .map_err(|e| ZbError::verification_failed(format!("quine inflate failed: {e}")))?;
-    if status != flate2::Status::StreamEnd || check.total_in() as usize != stream.bytes.len() {
-        return Err(ZbError::verification_failed(
-            "quine decoder did not consume the complete stream",
-        ));
-    }
-    decoded.truncate(check.total_out() as usize);
+    let decoded = decode_raw_deflate(
+        &archive[prefix_len..prefix_len + stream.bytes.len()],
+        archive_len as u64,
+    )?;
     if decoded != archive {
         return Err(ZbError::verification_failed(
             "quine decoded bytes differ from archive",
@@ -463,24 +452,22 @@ fn compress_payload(data: &[u8]) -> ZbResult<(u16, Vec<u8>)> {
     if data.is_empty() {
         return Ok((METHOD_STORED, Vec::new()));
     }
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(6));
-    encoder.write_all(data).map_err(|e| {
-        ZbError::new(
-            zb_types::ErrorCode::Internal,
-            format!("deflate failed: {e}"),
-        )
-    })?;
-    let compressed = encoder.finish().map_err(|e| {
-        ZbError::new(
-            zb_types::ErrorCode::Internal,
-            format!("deflate finish failed: {e}"),
-        )
-    })?;
-    if compressed.len() < data.len() {
-        Ok((METHOD_DEFLATE, compressed))
-    } else {
-        Ok((METHOD_STORED, data.to_vec()))
+    if data.len() > 65535 {
+        return Err(ZbError::resource_limited(
+            "attachment exceeds stored DEFLATE block limit",
+        ));
     }
+    let stored = encode_stored_stream(data)?;
+    let literals = data.iter().map(|&b| FixedOp::Literal(b)).collect::<Vec<_>>();
+    let fixed = encode_fixed_stream(&literals)?;
+    let (method, payload) = if fixed.len() < stored.len() {
+        (METHOD_DEFLATE, fixed)
+    } else if stored.len() < data.len() {
+        (METHOD_DEFLATE, stored)
+    } else {
+        (METHOD_STORED, data.to_vec())
+    };
+    Ok((method, payload))
 }
 
 fn emit_ordinary_locals(members: &[OrdinaryMember]) -> ZbResult<Vec<u8>> {
@@ -539,23 +526,7 @@ fn verify_ordinary_members(archive: &[u8], members: &[OrdinaryMember]) -> ZbResu
         let data = &archive[offset + lfh..offset + lfh + member.data.len()];
         let decoded = match member.method {
             METHOD_STORED => data.to_vec(),
-            METHOD_DEFLATE => {
-                let mut decoder = flate2::Decompress::new(false);
-                let mut out = vec![0; member.original.len() + 1];
-                let status = decoder
-                    .decompress(data, &mut out, flate2::FlushDecompress::Finish)
-                    .map_err(|e| {
-                        ZbError::verification_failed(format!("attachment inflate failed: {e}"))
-                    })?;
-                if status != flate2::Status::StreamEnd || decoder.total_in() as usize != data.len()
-                {
-                    return Err(ZbError::verification_failed(
-                        "attachment decoder did not finish cleanly",
-                    ));
-                }
-                out.truncate(decoder.total_out() as usize);
-                out
-            }
+            METHOD_DEFLATE => decode_raw_deflate(data, member.original.len() as u64)?,
             _ => {
                 return Err(ZbError::verification_failed(
                     "unsupported ordinary member method",

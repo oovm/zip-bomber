@@ -1,6 +1,6 @@
 //! Independent cycle edge and byte-period verification (Living `07` / `11`).
 
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_source::{ByteSource, MemorySource};
 use acorn_zip::decode_member_with_facts;
 use zb_types::{
@@ -234,7 +234,7 @@ fn verify_one_edge(
         "cycle-edge",
         MemorySource::from_bytes("cycle-verify.zip", owned),
         member,
-        &ParseBudget::default(),
+        &Budget::default(),
     )
     .map_err(|e| {
         ZbError::verification_failed(format!(

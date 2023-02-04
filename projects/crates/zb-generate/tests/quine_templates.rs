@@ -1,5 +1,4 @@
-use flate2::{Decompress, FlushDecompress, Status};
-use zb_generate::{generate, list_quine_templates, verify_zip_bytes};
+use zb_generate::{decode_raw_deflate, generate, list_quine_templates, verify_zip_bytes};
 use zb_types::{GenerateRequest, Outcome, VariantKind, ZIP_PROFILE_V0};
 
 #[test]
@@ -30,20 +29,8 @@ fn generated_quine_is_complete_and_self_identical() {
     let bytes = &set.artifacts[0].bytes;
     let start = 30 + request.topology.edges[0].member_path.len();
     let compressed = u32::from_le_bytes(bytes[18..22].try_into().unwrap()) as usize;
-    let mut decoder = Decompress::new(false);
-    let mut decoded = vec![0; bytes.len() + 1];
-    assert_eq!(
-        decoder
-            .decompress(
-                &bytes[start..start + compressed],
-                &mut decoded,
-                FlushDecompress::Finish
-            )
-            .unwrap(),
-        Status::StreamEnd
-    );
-    assert_eq!(decoder.total_in() as usize, compressed);
-    decoded.truncate(decoder.total_out() as usize);
+    let decoded = decode_raw_deflate(&bytes[start..start + compressed], bytes.len() as u64)
+        .expect("inflate self member");
     assert_eq!(&decoded, bytes);
     assert!(verify_zip_bytes(bytes).unwrap().ok);
 }

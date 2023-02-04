@@ -1,19 +1,14 @@
-use std::io::Read;
-
-use flate2::read::DeflateDecoder;
 use zb_generate::{
-    encode_blocks, encode_fixed_stream, encode_stored_stream, DeflateBlock, FixedOp,
+    decode_raw_deflate, encode_blocks, encode_fixed_stream, encode_stored_stream, DeflateBlock,
+    FixedOp,
 };
 
 fn inflate(raw: &[u8]) -> Vec<u8> {
-    let mut decoder = DeflateDecoder::new(raw);
-    let mut out = Vec::new();
-    decoder.read_to_end(&mut out).expect("inflate");
-    out
+    decode_raw_deflate(raw, 16 * 1024 * 1024).expect("inflate")
 }
 
 #[test]
-fn stored_stream_roundtrips_via_flate2() {
+fn stored_stream_roundtrips_via_acorn_codec() {
     let payload = b"hello-zb-stored";
     let raw = encode_stored_stream(payload).unwrap();
     assert_eq!(inflate(&raw), payload);
@@ -48,10 +43,7 @@ fn fixed_repeat_roundtrip() {
 fn stored_then_fixed_multi_block() {
     let raw = encode_blocks(&[
         DeflateBlock::Stored(b"pre".to_vec()),
-        DeflateBlock::Fixed(vec![
-            FixedOp::Literal(b'-'),
-            FixedOp::Literal(b'z'),
-        ]),
+        DeflateBlock::Fixed(vec![FixedOp::Literal(b'-'), FixedOp::Literal(b'z')]),
     ])
     .unwrap();
     assert_eq!(inflate(&raw), b"pre-z");

@@ -1,6 +1,6 @@
 //! ZIP verification adapter surface (Living `06`).
 
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_source::MemorySource;
 use acorn_zip::{decode_member_with_facts, index_zip_bytes};
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ pub struct AcornZipCapability {
     pub bounded_decode_complete: bool,
     /// Decode returns expected / actual CRC32.
     pub decode_crc_pair: bool,
-    /// ParseBudget / cancel is honored on scan and decode.
+    /// Budget is honored on scan and decode.
     pub parse_budget: bool,
     /// ZIP64 / data-descriptor / trailing-data status is queryable.
     pub format_status_query: bool,
@@ -129,7 +129,7 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
         ));
     }
 
-    let budget = ParseBudget::default();
+    let budget = Budget::default();
     let mut notes = Vec::new();
     notes.push(format!("indexed_members={}", index.members.len()));
 

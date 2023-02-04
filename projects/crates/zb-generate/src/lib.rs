@@ -22,9 +22,9 @@ use zb_types::{
 
 pub use crc::CrcPlan;
 pub use deflate::{
-    chain_repeats, encode_blocks, encode_blocks_with_finality, encode_fixed_stream,
-    encode_stored_block, encode_stored_stream, expand_skeleton, validate_repeat, BitWriter,
-    DeflateBlock, DeflatePlan, FixedOp, SkeletonOp,
+    chain_repeats, decode_raw_deflate, encode_blocks, encode_blocks_with_finality,
+    encode_fixed_stream, encode_stored_block, encode_stored_stream, expand_skeleton,
+    validate_repeat, BitWriter, DeflateBlock, DeflatePlan, FixedOp, SkeletonOp,
 };
 pub use emit::{emit_stored_archive, StoredMember};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};

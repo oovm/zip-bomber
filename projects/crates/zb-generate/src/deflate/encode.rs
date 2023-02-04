@@ -33,6 +33,8 @@ pub fn encode_blocks(blocks: &[DeflateBlock]) -> ZbResult<Vec<u8>> {
             DeflateBlock::Stored(data) => encode_stored(&mut w, data, is_final)?,
             DeflateBlock::Fixed(ops) => encode_fixed(&mut w, ops, is_final)?,
         }
+        // RFC 1951: each block ends on a byte boundary before the next header.
+        w.align_byte();
     }
     Ok(w.finish())
 }
@@ -55,6 +57,9 @@ pub fn encode_blocks_with_finality(blocks: &[(DeflateBlock, bool)]) -> ZbResult<
         match block {
             DeflateBlock::Stored(data) => encode_stored(&mut w, data, *is_final)?,
             DeflateBlock::Fixed(ops) => encode_fixed(&mut w, ops, *is_final)?,
+        }
+        if !is_final {
+            w.align_byte();
         }
     }
     Ok(w.finish())

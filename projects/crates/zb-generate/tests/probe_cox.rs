@@ -1,7 +1,4 @@
-use std::io::Read;
-
-use flate2::read::DeflateDecoder;
-use zb_generate::{encode_blocks, DeflateBlock, FixedOp};
+use zb_generate::{decode_raw_deflate, encode_blocks, DeflateBlock, FixedOp};
 
 fn r4() -> Vec<FixedOp> {
     vec![
@@ -40,9 +37,7 @@ fn appending_terminator_does_not_fix_core_identity() {
         &stream[75..80]
     );
     eprintln!("last 5 bytes={:02x?}", &stream[stream.len() - 5..]);
-    let mut dec = DeflateDecoder::new(&stream[..]);
-    let mut out = Vec::new();
-    dec.read_to_end(&mut out).unwrap();
+    let out = decode_raw_deflate(&stream, stream.len() as u64).expect("inflate");
     eprintln!("inflate len={}", out.len());
     assert_eq!(out.len(), 100);
     assert_eq!(stream.len(), 105);
@@ -51,7 +46,6 @@ fn appending_terminator_does_not_fix_core_identity() {
 
 #[test]
 fn asymmetric_core_has_a_constant_finality_conflict() {
-    // Seed data2 as R4 + L4nonfinal + R4 + L4final and see flate2 roundtrip identity.
     let mut data1 = vec![0u8; 20];
     let mut data2 = vec![0u8; 20];
     let mut data3 = vec![0u8; 20];
@@ -86,9 +80,7 @@ fn asymmetric_core_has_a_constant_finality_conflict() {
             DeflateBlock::Stored(data3.clone()),
         ])
         .unwrap();
-        let mut dec = DeflateDecoder::new(&cand[..]);
-        let mut out = Vec::new();
-        dec.read_to_end(&mut out).unwrap();
+        let out = decode_raw_deflate(&cand, cand.len() as u64).expect("inflate");
         eprintln!(
             "round {round}: inflate==cand {} (inflen={})",
             out == cand,

@@ -1,10 +1,11 @@
 //! Two-node ZIP constructor with explicit inter-record gaps and legal TLV padding.
 //! Codec construction follows the alternating program in DOI 10.3390/app14219797.
+use crate::deflate::decode_raw_deflate;
 use crate::templates::loopy::encode_loop;
 use crate::{emit_stored_archive, StoredMember};
 use zb_solver::{
-    crc32, crc32_shared_columns, solve_crc_identity_blocks_with_cancel, CancelToken, CrcByteSlot,
-    SolveOutcome, SolverBudget,
+    crc32, solve_shared_crc_with_cancel, CancelToken, CrcByteSlot, SharedCrcArchive, SolveOutcome,
+    SolverBudget,
 };
 use zb_types::{
     ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZbError,
@@ -294,11 +295,20 @@ pub(crate) fn generate(
             "loop layout changed after sizing",
         ));
     }
-    let (ca, cols_a) = crc32_shared_columns(&a, &sa, 8)?;
-    let (cb, cols_b) = crc32_shared_columns(&b, &sb, 8)?;
-    let outcome = solve_crc_identity_blocks_with_cancel(
-        &[(ca, cols_a.as_slice()), (cb, cols_b.as_slice())],
-        64,
+    let outcome = solve_shared_crc_with_cancel(
+        &[
+            SharedCrcArchive {
+                bytes: &a,
+                slots: &sa,
+                target_byte_vars: [0, 1, 2, 3],
+            },
+            SharedCrcArchive {
+                bytes: &b,
+                slots: &sb,
+                target_byte_vars: [4, 5, 6, 7],
+            },
+        ],
+        8,
         SolverBudget::default(),
         Some("loopy.crc.shared/v1".into()),
         cancel,
@@ -342,16 +352,8 @@ pub(crate) fn generate(
     }
     for (bytes, expected) in [(&a, &b), (&b, &a)] {
         let data = &bytes[ow + fw + hw..ow + fw + hw + stream_len];
-        let mut out = vec![0; total + 1];
-        let mut decoder = flate2::Decompress::new(false);
-        let status = decoder
-            .decompress(data, &mut out, flate2::FlushDecompress::Finish)
-            .map_err(|e| ZbError::verification_failed(e.to_string()))?;
-        out.truncate(decoder.total_out() as usize);
-        if status != flate2::Status::StreamEnd
-            || decoder.total_in() as usize != stream_len
-            || &out != expected
-        {
+        let out = decode_raw_deflate(data, total as u64)?;
+        if out != *expected {
             return Err(ZbError::verification_failed(
                 "loop complete byte equality failed",
             ));
