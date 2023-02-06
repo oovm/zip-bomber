@@ -1,14 +1,16 @@
 //! Independent cycle edge and byte-period verification (Living `07` / `11`).
 
-use acorn_core::Budget;
 use acorn_source::{ByteSource, MemorySource};
 use acorn_zip::decode_member_with_facts;
 use zb_types::{
     ArchiveGraphMember, ArchiveGraphSpec, ArtifactSet, CycleVerifyFacts, ErrorCode, FractalMode,
-    GenerateRequest, LoopyEdgeFact, VerificationSpec, VerifyEdgeSpec, ZbError, ZbResult,
+    GenerateLimits, GenerateRequest, LoopyEdgeFact, VerificationSpec, VerifyEdgeSpec, ZbError,
+    ZbResult,
 };
 
-use super::zip::{verify_artifact_set, VerificationReport};
+use crate::budget::TaskBudgetLedger;
+
+use super::zip::{verify_artifact_set_with_ledger, VerificationReport};
 
 /// Minimum positive period of a cyclic byte word.
 ///
@@ -102,19 +104,20 @@ pub fn verify_artifact_set_for_request(
     request: &GenerateRequest,
 ) -> ZbResult<VerificationReport> {
     let Some(graph) = request.graph.as_ref() else {
-        return verify_artifact_set(set);
+        return super::zip::verify_artifact_set_with_limits(set, &request.limits);
     };
     let edges = cycle_edges_from_graph(set, graph)?;
     let expected = match request.variant {
         zb_types::VariantKind::Loopy => Some(graph.nodes.len()),
         _ => None,
     };
-    verify_artifact_set_with_spec(
+    verify_artifact_set_with_spec_and_limits(
         set,
         &VerificationSpec {
             edges,
             expected_byte_period: expected,
         },
+        &request.limits,
     )
 }
 
@@ -123,7 +126,17 @@ pub fn verify_artifact_set_with_spec(
     set: &ArtifactSet,
     spec: &VerificationSpec,
 ) -> ZbResult<VerificationReport> {
-    let mut report = verify_artifact_set(set)?;
+    verify_artifact_set_with_spec_and_limits(set, spec, &GenerateLimits::small_sample())
+}
+
+/// Verify with an explicit shared task ledger across artifacts and cycle edges.
+pub fn verify_artifact_set_with_spec_and_limits(
+    set: &ArtifactSet,
+    spec: &VerificationSpec,
+    limits: &GenerateLimits,
+) -> ZbResult<VerificationReport> {
+    let mut ledger = TaskBudgetLedger::new(limits.clone());
+    let mut report = verify_artifact_set_with_ledger(set, &mut ledger)?;
     if spec.edges.is_empty() {
         return Ok(report);
     }
@@ -153,8 +166,14 @@ pub fn verify_artifact_set_with_spec(
                     format!("verify edge target `{}` is missing", edge.to),
                 )
             })?;
-        let mut fact =
-            verify_one_edge(&from.bytes, &to.bytes, &edge.member_path, &from.id.0, &to.id.0)?;
+        let mut fact = verify_one_edge(
+            &from.bytes,
+            &to.bytes,
+            &edge.member_path,
+            &from.id.0,
+            &to.id.0,
+            &mut ledger,
+        )?;
         fact.from = i;
         fact.to = (i + 1) % ordered.len();
         edge_facts.push(fact);
@@ -217,6 +236,7 @@ fn verify_one_edge(
     member_path: &str,
     from_id: &str,
     to_id: &str,
+    ledger: &mut TaskBudgetLedger,
 ) -> ZbResult<LoopyEdgeFact> {
     let owned = from_bytes.to_vec();
     let index = acorn_zip::index_zip_bytes("cycle-verify.zip", owned.clone())
@@ -230,17 +250,23 @@ fn verify_one_edge(
                 "artifact `{from_id}` missing recursive member `{member_path}`"
             ))
         })?;
+    let budget = ledger.reserve_member_decode(
+        owned.len() as u64,
+        member.compressed_size,
+        member.uncompressed_size,
+    )?;
     let (source, facts) = decode_member_with_facts(
         "cycle-edge",
         MemorySource::from_bytes("cycle-verify.zip", owned),
         member,
-        &Budget::default(),
+        &budget,
     )
     .map_err(|e| {
         ZbError::verification_failed(format!(
             "decode `{from_id}` member `{member_path}` failed: {e}"
         ))
     })?;
+    ledger.settle_member_decode(facts.decoded_size as u64, member.compressed_size)?;
     let decoded = match source.length().unwrap_or(0) {
         0 => Vec::new(),
         len => source

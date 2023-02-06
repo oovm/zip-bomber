@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+mod budget;
 mod crc;
 mod deflate;
 mod emit;
@@ -20,6 +21,7 @@ use zb_types::{
     ZbResult, ALL_VARIANTS,
 };
 
+pub use budget::TaskBudgetLedger;
 pub use crc::CrcPlan;
 pub use deflate::{
     chain_repeats, decode_raw_deflate, encode_blocks, encode_blocks_with_finality,
@@ -35,8 +37,9 @@ pub use templates::{
 };
 pub use variants::ArtifactBundle;
 pub use verify::{
-    cycle_edges_from_graph, minimum_byte_period, verify_artifact_set, verify_artifact_set_for_request,
-    verify_artifact_set_with_spec, verify_zip_bytes, AcornZipCapability, VerificationReport,
+    cycle_edges_from_graph, minimum_byte_period, verify_artifact_set,
+    verify_artifact_set_for_request, verify_artifact_set_with_limits, verify_artifact_set_with_spec,
+    verify_zip_bytes, verify_zip_bytes_with_limits, AcornZipCapability, VerificationReport,
 };
 /// Re-export solver surface so generate callers share one dependency path.
 pub use zb_solver::{

@@ -1,5 +1,5 @@
 //! Unified ordered graph validation and bounded archive-state compilation.
-use crate::{emit_stored_archive, PlanSummary, StoredMember};
+use crate::{emit_stored_archive, PlanSummary, StoredMember, TaskBudgetLedger};
 use acorn_source::ByteSource;
 use std::collections::{BTreeMap, BTreeSet};
 use zb_solver::CancelToken;
@@ -603,6 +603,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
         }
     }
     // Independent parser verifies every declared member, including the target identity.
+    let mut verify_ledger = TaskBudgetLedger::new(request.limits.clone());
     for (&(n, d), bytes) in &compiled {
         let list = if g.mode == FractalMode::Finite && d == 0 {
             g.nodes[n].terminal.as_ref().unwrap()
@@ -627,7 +628,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
                 "graph verification decoded budget exceeded",
             ));
         }
-        verify_members(bytes, &expected)?;
+        verify_members(bytes, &expected, &mut verify_ledger)?;
     }
     let root_key = (g.root, depth);
     let mut artifacts: Vec<Artifact> = Vec::new();
@@ -662,7 +663,11 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
     })
 }
 
-fn verify_members(bytes: &[u8], expected: &[StoredMember]) -> ZbResult<()> {
+fn verify_members(
+    bytes: &[u8],
+    expected: &[StoredMember],
+    ledger: &mut TaskBudgetLedger,
+) -> ZbResult<()> {
     if expected.is_empty() {
         if bytes.len() == 22 && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06] {
             return Ok(());
@@ -682,11 +687,17 @@ fn verify_members(bytes: &[u8], expected: &[StoredMember]) -> ZbResult<()> {
                 "graph member order or path mismatch",
             ));
         }
+        let archive_len = bytes.len() as u64;
+        let budget = ledger.reserve_member_decode(
+            archive_len,
+            actual.compressed_size,
+            actual.uncompressed_size,
+        )?;
         let (source, facts) = acorn_zip::decode_member_with_facts(
             "graph-member",
             acorn_source::MemorySource::from_bytes("graph.zip", bytes.to_vec()),
             actual,
-            &acorn_core::Budget::default(),
+            &budget,
         )
         .map_err(|e| {
             ZbError::verification_failed(format!(
@@ -694,6 +705,7 @@ fn verify_members(bytes: &[u8], expected: &[StoredMember]) -> ZbResult<()> {
                 expected.path
             ))
         })?;
+        ledger.settle_member_decode(facts.decoded_size as u64, actual.compressed_size)?;
         // Empty stored files and directory entries decode to a zero-length source.
         // Acorn rejects `read_range(0, 0)` with unexpected eof, so skip that call.
         let decoded = match source.length().unwrap_or(0) {

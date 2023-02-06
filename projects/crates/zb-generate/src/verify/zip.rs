@@ -1,10 +1,11 @@
 //! ZIP verification adapter surface (Living `06`).
 
-use acorn_core::Budget;
 use acorn_source::MemorySource;
 use acorn_zip::{decode_member_with_facts, index_zip_bytes};
 use serde::{Deserialize, Serialize};
-use zb_types::{ArtifactSet, CycleVerifyFacts, ZbError, ZbResult};
+use zb_types::{ArtifactSet, CycleVerifyFacts, GenerateLimits, ZbError, ZbResult};
+
+use crate::budget::TaskBudgetLedger;
 
 /// Facts the Acorn ZIP adapter must eventually expose for full verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +102,22 @@ pub struct VerificationReport {
 
 /// Verify emitted ZIP bytes through an independent Acorn parser path.
 pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
+    verify_zip_bytes_with_limits(bytes, &GenerateLimits::small_sample())
+}
+
+/// Verify with an explicit task budget ledger (Living `13` §5).
+pub fn verify_zip_bytes_with_limits(
+    bytes: &[u8],
+    limits: &GenerateLimits,
+) -> ZbResult<VerificationReport> {
+    let mut ledger = TaskBudgetLedger::new(limits.clone());
+    verify_zip_bytes_with_ledger(bytes, &mut ledger)
+}
+
+fn verify_zip_bytes_with_ledger(
+    bytes: &[u8],
+    ledger: &mut TaskBudgetLedger,
+) -> ZbResult<VerificationReport> {
     let acorn = AcornZipCapability::observed();
     if !acorn.supports_v0_full_verify() {
         let missing: Vec<String> = acorn.missing().into_iter().map(str::to_string).collect();
@@ -129,11 +146,14 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
         ));
     }
 
-    let budget = Budget::default();
     let mut notes = Vec::new();
     notes.push(format!("indexed_members={}", index.members.len()));
 
     for (i, member) in index.members.iter().enumerate() {
+        let archive_len = owned.len() as u64;
+        let compressed = member.compressed_size as u64;
+        let uncompressed = member.uncompressed_size as u64;
+        let budget = ledger.reserve_member_decode(archive_len, compressed, uncompressed)?;
         let source = MemorySource::from_bytes("zb-verify.zip", owned.clone());
         let (_decoded, facts) =
             decode_member_with_facts(format!("member-{i}"), source, member, &budget).map_err(
@@ -144,6 +164,7 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
                     ))
                 },
             )?;
+        ledger.settle_member_decode(facts.decoded_size as u64, compressed)?;
         if !facts.checksum_ok() {
             return Err(ZbError::verification_failed(format!(
                 "Acorn CRC/consume check failed for `{}` expected={:#010x} actual={:#010x} fully_consumed={}",
@@ -177,6 +198,22 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
 /// Living `03` / `07`: Loopy and Bomb return multi-artifact sets; verifying only
 /// the root would miss sibling archives that encode the cycle or nesting.
 pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
+    verify_artifact_set_with_limits(set, &GenerateLimits::small_sample())
+}
+
+/// Verify every artifact using one shared task ledger.
+pub fn verify_artifact_set_with_limits(
+    set: &ArtifactSet,
+    limits: &GenerateLimits,
+) -> ZbResult<VerificationReport> {
+    let mut ledger = TaskBudgetLedger::new(limits.clone());
+    verify_artifact_set_with_ledger(set, &mut ledger)
+}
+
+pub(crate) fn verify_artifact_set_with_ledger(
+    set: &ArtifactSet,
+    ledger: &mut TaskBudgetLedger,
+) -> ZbResult<VerificationReport> {
     if set.artifacts.is_empty() {
         return Err(ZbError::new(
             zb_types::ErrorCode::InvalidTopology,
@@ -218,7 +255,7 @@ pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
 
     let mut acorn = AcornZipCapability::observed();
     for artifact in &set.artifacts {
-        let report = verify_zip_bytes(&artifact.bytes)?;
+        let report = verify_zip_bytes_with_ledger(&artifact.bytes, ledger)?;
         acorn = report.acorn;
         notes.push(format!(
             "artifact=`{}` bytes={} ok",
