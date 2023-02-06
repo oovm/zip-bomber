@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 mod budget;
+mod budget_estimate;
 mod crc;
 mod deflate;
 mod emit;
@@ -22,6 +23,7 @@ use zb_types::{
 };
 
 pub use budget::TaskBudgetLedger;
+pub use budget_estimate::PlanBudgetEstimate;
 pub use crc::CrcPlan;
 pub use deflate::{
     chain_repeats, decode_raw_deflate, encode_blocks, encode_blocks_with_finality,
@@ -71,6 +73,9 @@ pub struct PlanSummary {
     pub summary: String,
     /// Non-fatal notes.
     pub warnings: Vec<String>,
+    /// Estimated index / decode / solver consumption when planning succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_estimate: Option<PlanBudgetEstimate>,
 }
 
 /// Plan generation without emitting bytes.
@@ -109,12 +114,22 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
                     layout.profile_id
                 )
             };
+            let budget_estimate = match variants::plan_bomb_budget(&request) {
+                Ok(est) => est,
+                Err(err) => {
+                    return Outcome::err(
+                        err.clone(),
+                        GenerateReport::failed(variant, crc, nodes, edges, &err),
+                    );
+                }
+            };
             let plan = PlanSummary {
                 feasible: true,
                 variant: variant.as_str().to_string(),
                 profile: layout.profile_id,
                 summary,
                 warnings: Vec::new(),
+                budget_estimate: Some(budget_estimate),
             };
             let report = GenerateReport::ok(variant, crc, nodes, edges, 0, 0, Vec::new());
             Outcome::ok(plan, report)
@@ -140,6 +155,15 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
                     );
                 }
             };
+            let budget_estimate = match variants::plan_quine_budget(&request) {
+                Ok(est) => est,
+                Err(err) => {
+                    return Outcome::err(
+                        err.clone(),
+                        GenerateReport::failed(variant, crc, nodes, edges, &err),
+                    );
+                }
+            };
             let plan = PlanSummary {
                 feasible: true,
                 variant: variant.as_str().to_string(),
@@ -157,6 +181,7 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
                     quine_layout.suffix_budget_remaining,
                     quine_layout.compressed_payload_bytes
                 )],
+                budget_estimate: Some(budget_estimate),
             };
             Outcome::ok(
                 plan,

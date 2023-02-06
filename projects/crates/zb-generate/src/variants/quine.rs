@@ -12,6 +12,7 @@ use zb_types::{
 use crate::deflate::{decode_raw_deflate, encode_fixed_stream, encode_stored_stream, FixedOp};
 use crate::paths::validate_quine_members;
 use crate::templates::{encode_recursive_stream, list_quine_templates, QuineTemplateMeta};
+use crate::PlanBudgetEstimate;
 
 use super::ArtifactBundle;
 
@@ -86,6 +87,105 @@ pub fn generate_with_cancel(
 /// Compress ordinary payloads and report layout budgets without emitting CRC.
 pub fn plan_layout(request: &GenerateRequest) -> ZbResult<QuineLayoutPlan> {
     prepare_layout(request).map(|(layout, _)| layout)
+}
+
+/// Plan-time materialization estimate and the same budget gates as `generate` before CRC solve.
+pub fn plan_materialization_budget(request: &GenerateRequest) -> ZbResult<PlanBudgetEstimate> {
+    let sizing = quine_materialization_sizing(request)?;
+    Ok(PlanBudgetEstimate {
+        index_passes: 1,
+        member_decodes: sizing.ordinary_members as u64 + 1,
+        decoded_bytes: sizing.decoded_bytes,
+        read_bytes: sizing.archive_len as u64 * 2,
+        solver_operations: sizing.operation_bound,
+        constraint_bits: 32 * 33,
+    })
+}
+
+struct QuineMaterializationSizing {
+    archive_len: usize,
+    ordinary_members: usize,
+    decoded_bytes: u64,
+    operation_bound: u64,
+}
+
+fn quine_materialization_sizing(request: &GenerateRequest) -> ZbResult<QuineMaterializationSizing> {
+    if request.limits.max_nodes < 1
+        || request.limits.max_edges < 1
+        || request.limits.max_members < 1
+    {
+        return Err(ZbError::resource_limited(
+            "quine requires one node, edge, and member",
+        ));
+    }
+    let (layout, ordinary) = prepare_layout(request)?;
+    let self_name = layout.self_member_path.as_bytes();
+    let ordinary_local = emit_ordinary_locals(&ordinary)?;
+    let self_lfh_offset = ordinary_local.len();
+    let input_bytes: u64 = ordinary.iter().map(|m| m.original.len() as u64).sum();
+    let working_bound =
+        (layout.prefix_len + layout.suffix_len) as u64 * 16 + input_bytes.saturating_mul(4) + 65536;
+    if working_bound > request.limits.max_live_memory_bytes {
+        return Err(ZbError::resource_limited(
+            "quine working set exceeds max_live_memory_bytes",
+        ));
+    }
+    let zero_crc = [0u8; 4];
+    let mut prefix = ordinary_local.clone();
+    prefix.extend(local_header(
+        self_name,
+        &zero_crc,
+        0,
+        0,
+        METHOD_DEFLATE,
+        false,
+    ));
+    let ordinary_central = emit_ordinary_central(&ordinary)?;
+    let mut suffix = ordinary_central;
+    suffix.extend(central_header(
+        self_name,
+        &zero_crc,
+        0,
+        0,
+        METHOD_DEFLATE,
+        self_lfh_offset as u32,
+        false,
+    ));
+    let provisional_cd_size = suffix.len() as u32;
+    suffix.extend(eocd(
+        (ordinary.len() + 1) as u16,
+        provisional_cd_size,
+        prefix.len() as u32,
+    ));
+    let stream = encode_recursive_stream(&prefix, &suffix, request.limits.max_template_candidates)?;
+    let archive_len = prefix.len() + stream.bytes.len() + suffix.len();
+    if archive_len as u64 > request.limits.max_artifact_bytes {
+        return Err(ZbError::resource_limited(
+            "quine artifact exceeds max_artifact_bytes",
+        ));
+    }
+    let decoded_bytes = (archive_len as u64).saturating_add(input_bytes);
+    if archive_len as u64 > request.limits.max_total_artifact_bytes
+        || decoded_bytes > request.limits.max_decoded_bytes
+    {
+        return Err(ZbError::resource_limited(
+            "quine exceeds total artifact or decode budget",
+        ));
+    }
+    let operation_bound = archive_len as u64 * 8 + 262144;
+    if request.limits.max_constraint_bits < 32 * 33
+        || request.limits.max_solver_operations < operation_bound
+    {
+        return Err(ZbError::resource_limited(
+            "quine CRC matrix or operation budget exhausted",
+        ));
+    }
+    Ok(QuineMaterializationSizing {
+        archive_len,
+        ordinary_members: ordinary.len(),
+        decoded_bytes,
+        operation_bound,
+    })
 }
 
 fn prepare_layout(request: &GenerateRequest) -> ZbResult<(QuineLayoutPlan, Vec<OrdinaryMember>)> {
@@ -169,18 +269,10 @@ fn try_template(
         ));
     }
     let (layout, ordinary) = prepare_layout(request)?;
+    let sizing = quine_materialization_sizing(request)?;
     let self_name = layout.self_member_path.as_bytes();
     let ordinary_local = emit_ordinary_locals(&ordinary)?;
     let self_lfh_offset = ordinary_local.len();
-    let input_bytes: u64 = ordinary.iter().map(|m| m.original.len() as u64).sum();
-    let working_bound =
-        (layout.prefix_len + layout.suffix_len) as u64 * 16 + input_bytes.saturating_mul(4) + 65536;
-    if working_bound > request.limits.max_live_memory_bytes {
-        return Err(ZbError::resource_limited(
-            "quine working set exceeds max_live_memory_bytes",
-        ));
-    }
-
     let zero_crc = [0u8; 4];
     let mut prefix = ordinary_local.clone();
     prefix.extend(local_header(
@@ -208,31 +300,8 @@ fn try_template(
         provisional_cd_size,
         prefix.len() as u32,
     ));
-
     let stream = encode_recursive_stream(&prefix, &suffix, request.limits.max_template_candidates)?;
-    let archive_len = prefix.len() + stream.bytes.len() + suffix.len();
-    if archive_len as u64 > request.limits.max_artifact_bytes {
-        return Err(ZbError::resource_limited(
-            "quine artifact exceeds max_artifact_bytes",
-        ));
-    }
-    let decoded_bytes = (archive_len as u64).saturating_add(input_bytes);
-    if archive_len as u64 > request.limits.max_total_artifact_bytes
-        || decoded_bytes > request.limits.max_decoded_bytes
-    {
-        return Err(ZbError::resource_limited(
-            "quine exceeds total artifact or decode budget",
-        ));
-    }
-    let operation_bound = archive_len as u64 * 8 + 262144;
-    if request.limits.max_constraint_bits < 32 * 33
-        || request.limits.max_solver_operations < operation_bound
-    {
-        return Err(ZbError::resource_limited(
-            "quine CRC matrix or operation budget exhausted",
-        ));
-    }
-
+    let archive_len = sizing.archive_len;
     let compressed_len = stream.bytes.len() as u32;
     let archive_len32 = u32::try_from(archive_len)
         .map_err(|_| ZbError::resource_limited("quine archive exceeds ZIP32"))?;
@@ -367,7 +436,7 @@ fn try_template(
         1,
         1,
         artifact.bytes.len() as u64,
-        decoded_bytes,
+        sizing.decoded_bytes,
         vec![
             format!("template={}", meta.id),
             format!("self_member_path={}", layout.self_member_path),

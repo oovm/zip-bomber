@@ -8,6 +8,7 @@ use zb_types::{
 };
 
 use crate::emit::{emit_stored_archive, StoredMember};
+use crate::PlanBudgetEstimate;
 
 use super::ArtifactBundle;
 
@@ -486,7 +487,7 @@ fn plan_topology_dag(
     nest_out: &HashMap<&NodeId, Vec<&zb_types::ArchiveEdge>>,
     root: &NodeId,
     payload_by_path: &HashMap<&str, &[u8]>,
-) -> ZbResult<()> {
+) -> ZbResult<u64> {
     let graph = &request.topology;
     let mut planned: HashMap<NodeId, u64> = HashMap::new();
     let mut unique = 0u64;
@@ -561,8 +562,141 @@ fn plan_topology_dag(
         }
         planned.insert((*node).clone(), size);
     }
-    logical_unfold_sizes(root, nest_out, &planned, request.limits.max_decoded_bytes)?;
-    Ok(())
+    logical_unfold_sizes(root, nest_out, &planned, request.limits.max_decoded_bytes)
+}
+
+/// Plan-time budget estimate and the same pre-emit rejection gates as `generate`.
+pub(crate) fn plan_budget(request: &GenerateRequest) -> ZbResult<PlanBudgetEstimate> {
+    if request.topology.nodes.is_empty() && request.topology.edges.is_empty() {
+        let depth = DEFAULT_DEPTH.min(request.limits.max_depth).max(1);
+        let branch = DEFAULT_BRANCH.max(1);
+        let leaf = request
+            .payloads
+            .first()
+            .map(|p| p.bytes.len() as u64)
+            .unwrap_or(DEFAULT_LEAF.len() as u64);
+        let logical = plan_default_nested(leaf, branch, depth, &request.limits)?;
+        return Ok(PlanBudgetEstimate {
+            index_passes: 1,
+            member_decodes: (depth as u64) * branch as u64,
+            decoded_bytes: logical,
+            read_bytes: logical.saturating_mul(2),
+            solver_operations: 0,
+            constraint_bits: 0,
+        });
+    }
+    let logical = plan_topology_dag_budget(request)?;
+    let members = request.topology.edges.len() as u64 + request.topology.nodes.len() as u64;
+    Ok(PlanBudgetEstimate {
+        index_passes: 1,
+        member_decodes: members,
+        decoded_bytes: logical,
+        read_bytes: logical.saturating_mul(2),
+        solver_operations: 0,
+        constraint_bits: 0,
+    })
+}
+
+fn plan_topology_dag_budget(request: &GenerateRequest) -> ZbResult<u64> {
+    let graph = &request.topology;
+    if graph.nodes.is_empty() {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            "bomb topology requires at least one node when edges are present",
+        ));
+    }
+    let node_set: HashSet<&NodeId> = graph.nodes.iter().collect();
+    for edge in &graph.edges {
+        if edge.member_path.is_empty() {
+            return Err(ZbError::new(
+                ErrorCode::InvalidTopology,
+                "bomb edges require non-empty member_path",
+            ));
+        }
+        if !node_set.contains(&edge.from) || !node_set.contains(&edge.to) {
+            return Err(ZbError::new(
+                ErrorCode::InvalidTopology,
+                format!(
+                    "bomb edge `{}` -> `{}` references unknown node",
+                    edge.from.0, edge.to.0
+                ),
+            ));
+        }
+        match edge.role {
+            EdgeRole::NestedArchive | EdgeRole::Payload => {}
+            EdgeRole::SelfReference | EdgeRole::FractalRole => {
+                return Err(ZbError::new(
+                    ErrorCode::InvalidTopology,
+                    format!(
+                        "bomb rejects edge role `{}` (nested_archive/payload only)",
+                        edge.role.as_str()
+                    ),
+                ));
+            }
+        }
+    }
+    let mut nest_out: HashMap<&NodeId, Vec<&zb_types::ArchiveEdge>> = HashMap::new();
+    let mut nest_in: HashMap<&NodeId, usize> = HashMap::new();
+    for node in &graph.nodes {
+        nest_out.entry(node).or_default();
+        nest_in.entry(node).or_insert(0);
+    }
+    for edge in &graph.edges {
+        if edge.role != EdgeRole::NestedArchive {
+            continue;
+        }
+        if edge.from == edge.to {
+            return Err(ZbError::new(
+                ErrorCode::InvalidTopology,
+                "bomb nested_archive edges must be acyclic (no self-loop)",
+            ));
+        }
+        nest_out.get_mut(&edge.from).unwrap().push(edge);
+        *nest_in.get_mut(&edge.to).unwrap() += 1;
+    }
+    let mut queue: VecDeque<&NodeId> = nest_in
+        .iter()
+        .filter_map(|(id, deg)| (*deg == 0).then_some(*id))
+        .collect();
+    let mut order = Vec::with_capacity(graph.nodes.len());
+    let mut remaining = nest_in.clone();
+    while let Some(node) = queue.pop_front() {
+        order.push(node);
+        for edge in nest_out.get(node).into_iter().flatten() {
+            let deg = remaining.get_mut(&edge.to).unwrap();
+            *deg -= 1;
+            if *deg == 0 {
+                queue.push_back(&edge.to);
+            }
+        }
+    }
+    if order.len() != graph.nodes.len() {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            "bomb topology must be a DAG (cycle detected on nested_archive edges)",
+        ));
+    }
+    let roots: Vec<&NodeId> = nest_in
+        .iter()
+        .filter_map(|(id, deg)| (*deg == 0).then_some(*id))
+        .collect();
+    if roots.len() != 1 {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            format!(
+                "bomb topology requires exactly one root (found {})",
+                roots.len()
+            ),
+        ));
+    }
+    let root = roots[0];
+    let payload_by_path: HashMap<&str, &[u8]> = request
+        .payloads
+        .iter()
+        .map(|p| (p.path.as_str(), p.bytes.as_slice()))
+        .collect();
+    order.reverse();
+    plan_topology_dag(request, &order, &nest_out, root, &payload_by_path)
 }
 
 fn checked_logical(leaf: u64, branch: u32, depth: u32, max_decoded: u64) -> ZbResult<u64> {

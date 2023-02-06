@@ -1,5 +1,7 @@
 //! Unified ordered graph validation and bounded archive-state compilation.
-use crate::{emit_stored_archive, PlanSummary, StoredMember, TaskBudgetLedger};
+use crate::{
+    emit_stored_archive, PlanBudgetEstimate, PlanSummary, StoredMember, TaskBudgetLedger,
+};
 use acorn_source::ByteSource;
 use std::collections::{BTreeMap, BTreeSet};
 use zb_solver::CancelToken;
@@ -271,23 +273,77 @@ fn supported(request: &GenerateRequest, components: &[Vec<usize>]) -> ZbResult<(
     Ok(())
 }
 
+fn finite_needed_states(
+    g: &ArchiveGraphSpec,
+    depth: u32,
+    limits: &zb_types::GenerateLimits,
+) -> ZbResult<BTreeSet<(usize, u32)>> {
+    let mut needed = BTreeSet::new();
+    let mut pending = vec![(g.root, depth)];
+    while let Some((n, d)) = pending.pop() {
+        if !needed.insert((n, d)) {
+            continue;
+        }
+        if needed.len() as u64
+            > limits.max_nodes as u64 * (limits.max_depth as u64 + 1)
+        {
+            return Err(ZbError::resource_limited("finite state budget exceeded"));
+        }
+        if d > 0 {
+            for m in &g.nodes[n].members {
+                if let Member::Archive { target, .. } = m {
+                    pending.push((*target, d - 1));
+                }
+            }
+        }
+    }
+    Ok(needed)
+}
+
+fn estimate_finite_verify(g: &ArchiveGraphSpec, needed: &BTreeSet<(usize, u32)>) -> PlanBudgetEstimate {
+    let mut member_decodes = 0u64;
+    for &(n, d) in needed {
+        let list = if d == 0 {
+            g.nodes[n].terminal.as_ref().map(|t| t.as_slice()).unwrap_or(&[])
+        } else {
+            &g.nodes[n].members
+        };
+        member_decodes += list.len() as u64;
+    }
+    PlanBudgetEstimate {
+        index_passes: needed.len() as u64 * 2,
+        member_decodes: member_decodes * 2,
+        decoded_bytes: 0,
+        read_bytes: 0,
+        solver_operations: 0,
+        constraint_bits: 0,
+    }
+}
+
 /// Plan the normalized graph without emitting archives.
 pub(crate) fn plan(request: GenerateRequest) -> Outcome<PlanSummary> {
     let g = request.graph.as_ref().unwrap();
     let nodes = g.nodes.len();
     let count = edges(g);
-    let result = validate(&request).and_then(|(_, components)| {
+    let result = validate(&request).and_then(|(depth, components)| {
         supported(&request, &components)?;
-        // Living 11: layout feasibility is a distinct plan fact from template support.
+        let mut budget_estimate = PlanBudgetEstimate::default();
+        if g.mode == FractalMode::Finite {
+            let needed = finite_needed_states(g, depth, &request.limits)?;
+            plan_finite_expansion(&request, g, depth, &needed)?;
+            budget_estimate = budget_estimate.merge(estimate_finite_verify(g, &needed));
+        }
         for component in &components {
             if component.len() == 2 && request.profile == crate::loop_zip::PROFILE {
-                crate::loop_zip::check_layout(&request, component)?;
+                budget_estimate = budget_estimate.merge(
+                    crate::loop_zip::plan_materialization(&request, component)?,
+                );
             }
         }
-        Ok(())
+        Ok(budget_estimate)
     });
     match result {
-        Ok(()) => Outcome::ok(
+        Ok(budget_estimate) => Outcome::ok(
             PlanSummary {
                 feasible: true,
                 variant: request.variant.as_str().into(),
@@ -298,6 +354,7 @@ pub(crate) fn plan(request: GenerateRequest) -> Outcome<PlanSummary> {
                     g.mode.as_str()
                 ),
                 warnings: Vec::new(),
+                budget_estimate: Some(budget_estimate),
             },
             GenerateReport::ok(
                 request.variant,

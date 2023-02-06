@@ -38,6 +38,7 @@ export type BackendPlanResult = {
     feasible?: boolean;
     summary?: string;
     profile?: string;
+    budgetEstimate?: import("./types.js").PlanBudgetEstimate;
     reportJson: string;
     errorCategory?: string;
     errorCode?: string;
@@ -364,6 +365,7 @@ export function createSharedZipBomberApi(
                         profile: result.profile ?? "zip.profile/v0-stub",
                         summary: result.summary ?? "planned",
                         warnings: report.warnings ?? [],
+                        budget_estimate: result.budgetEstimate ?? undefined,
                     },
                     report,
                 };

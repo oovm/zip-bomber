@@ -139,12 +139,22 @@ export type GenerateRequest = {
     payloads?: PayloadSpec[];
 };
 
+export type PlanBudgetEstimate = {
+    index_passes: number;
+    member_decodes: number;
+    decoded_bytes: number;
+    read_bytes: number;
+    solver_operations: number;
+    constraint_bits: number;
+};
+
 export type PlanSummary = {
     feasible: boolean;
     variant: VariantId;
     profile: string;
     summary: string;
     warnings: string[];
+    budget_estimate?: PlanBudgetEstimate | null;
 };
 
 export type VerifyEdgeSpec = {

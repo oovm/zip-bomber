@@ -72,6 +72,7 @@ fn plan_payload(request: GenerateRequest) -> Result<String, JsValue> {
                 "summary": value.summary,
                 "profile": value.profile,
                 "variant": value.variant,
+                "budgetEstimate": value.budget_estimate,
                 "report": serde_json::from_str::<serde_json::Value>(&report).unwrap_or(serde_json::Value::Null)
             })
         }

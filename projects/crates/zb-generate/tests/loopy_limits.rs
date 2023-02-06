@@ -91,6 +91,17 @@ fn quote_and_tail_width_boundary_is_tight() {
 fn low_decode_budget_rejects_two_node_layout() {
     let mut request = loopy_with_payload("c2hvcnQ=");
     request.limits.max_decoded_bytes = 64;
+    match plan_generate(request.clone()) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.code, ErrorCode::ResourceLimited);
+            assert!(
+                error.message.contains("budget") || error.message.contains("layout"),
+                "{}",
+                error.message
+            );
+        }
+        other => panic!("plan expected resource_limited, got {other:?}"),
+    }
     match generate(request) {
         Outcome::Err { error, .. } => {
             assert_eq!(error.code, ErrorCode::ResourceLimited);
@@ -100,6 +111,6 @@ fn low_decode_budget_rejects_two_node_layout() {
                 error.message
             );
         }
-        other => panic!("expected resource_limited, got {other:?}"),
+        other => panic!("generate expected resource_limited, got {other:?}"),
     }
 }

@@ -8,6 +8,8 @@ fn plans_empty_bomb_as_feasible() {
             assert!(value.feasible);
             assert_eq!(value.variant, "bomb");
             assert!(value.summary.contains("default depth"));
+            let est = value.budget_estimate.expect("budget estimate");
+            assert!(est.decoded_bytes > 0);
         }
         Outcome::Err { error, .. } => panic!("plan should succeed: {error}"),
     }
@@ -32,6 +34,9 @@ fn plans_quine_with_complete_template() {
         Outcome::Ok { value, .. } => {
             assert!(value.feasible);
             assert!(value.summary.contains("prefix/core/suffix"));
+            let est = value.budget_estimate.expect("budget estimate");
+            assert!(est.solver_operations > 0);
+            assert!(est.constraint_bits >= 32 * 33);
         }
         Outcome::Err { error, .. } => panic!("quine plan failed: {error}"),
     }

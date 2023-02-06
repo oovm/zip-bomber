@@ -73,13 +73,22 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
     return {
         planRequestJson: planRequestJson
             ? (requestJson) => {
-                  const raw = JSON.parse(planRequestJson(requestJson));
+                  const raw = JSON.parse(planRequestJson(requestJson)) as {
+                      ok: boolean;
+                      feasible?: boolean;
+                      summary?: string;
+                      profile?: string;
+                      budgetEstimate?: import("../types.js").PlanBudgetEstimate;
+                      report?: unknown;
+                      error?: { category?: string; code?: string; message?: string };
+                  };
                   return {
                       exitCode: raw.ok ? 0 : 2,
                       ok: raw.ok,
                       feasible: raw.feasible,
                       summary: raw.summary,
                       profile: raw.profile,
+                      budgetEstimate: raw.budgetEstimate,
                       reportJson: JSON.stringify(raw.report ?? {}),
                       errorCategory: raw.error?.category,
                       errorCode: raw.error?.code,

@@ -8,6 +8,8 @@ pub(crate) mod quine;
 use zb_solver::CancelToken;
 use zb_types::{ArtifactSet, GenerateReport, GenerateRequest, VariantKind, ZbResult};
 
+use crate::PlanBudgetEstimate;
+
 /// Generated archive set plus report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactBundle {
@@ -33,6 +35,16 @@ pub fn dispatch_with_cancel(
         VariantKind::Loopy => loopy::generate(request),
         VariantKind::Fractal => fractal::generate(request),
     }
+}
+
+/// Plan-time budget estimate for finite / topology bomb requests.
+pub(crate) fn plan_bomb_budget(request: &GenerateRequest) -> ZbResult<PlanBudgetEstimate> {
+    bomb::plan_budget(request)
+}
+
+/// Plan-time budget estimate for quine requests.
+pub(crate) fn plan_quine_budget(request: &GenerateRequest) -> ZbResult<PlanBudgetEstimate> {
+    quine::plan_materialization_budget(request)
 }
 
 pub(super) fn stub_bundle(request: GenerateRequest) -> ArtifactBundle {

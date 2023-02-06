@@ -2,7 +2,7 @@
 //! Codec construction follows the alternating program in DOI 10.3390/app14219797.
 use crate::deflate::decode_raw_deflate;
 use crate::templates::loopy::encode_loop;
-use crate::{emit_stored_archive, StoredMember};
+use crate::{emit_stored_archive, PlanBudgetEstimate, StoredMember};
 use zb_solver::{
     crc32, solve_shared_crc_with_cancel, CancelToken, CrcByteSlot, SharedCrcArchive, SolveOutcome,
     SolverBudget,
@@ -222,12 +222,49 @@ fn measure(request: &GenerateRequest, states: &[usize]) -> ZbResult<Measured> {
     })
 }
 
-/// Layout feasibility for plan: quote window plus a bounded tail-width template candidate.
-/// CRC search is not run here. Unsatisfiable tail width returns `search_exhausted`.
-pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbResult<()> {
+fn check_two_node_materialization_budget(request: &GenerateRequest, total: usize) -> ZbResult<()> {
+    if total as u64 > request.limits.max_artifact_bytes
+        || 2 * total as u64 > request.limits.max_total_artifact_bytes
+        || total as u64 * 32 > request.limits.max_live_memory_bytes
+        || total as u64 * 4 > request.limits.max_decoded_bytes
+        || request.limits.max_constraint_bits < 64 * 65
+        || request.limits.max_solver_operations < (total as u64 * 16 + 1048576)
+    {
+        return Err(ZbError::resource_limited(
+            "two-node layout or solver budget exceeded",
+        ));
+    }
+    Ok(())
+}
+
+fn two_node_plan_estimate(total: usize, ordinary_members: &[usize]) -> PlanBudgetEstimate {
+    let members_per_archive = ordinary_members
+        .iter()
+        .map(|count| *count as u64 + 1)
+        .sum::<u64>();
+    PlanBudgetEstimate {
+        index_passes: 4,
+        member_decodes: members_per_archive * 2,
+        decoded_bytes: total as u64 * 4,
+        read_bytes: total as u64 * 32,
+        solver_operations: total as u64 * 16 + 1048576,
+        constraint_bits: 64 * 65,
+    }
+}
+
+/// Layout and materialization budget for plan (quote window, tail width, decode/solver ceilings).
+pub(crate) fn plan_materialization(
+    request: &GenerateRequest,
+    states: &[usize],
+) -> ZbResult<PlanBudgetEstimate> {
     let measured = measure(request, states)?;
-    let Measured { layouts, ow, .. } = measured;
-    let _ = assemble(
+    let Measured {
+        layouts,
+        ordinary_members,
+        ow,
+        ..
+    } = measured;
+    let (provisional, _) = assemble(
         &layouts[0],
         &layouts[1],
         ow,
@@ -235,7 +272,15 @@ pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbRes
         0,
         request.limits.max_template_candidates,
     )?;
-    Ok(())
+    let total = provisional.len();
+    check_two_node_materialization_budget(request, total)?;
+    Ok(two_node_plan_estimate(total, &ordinary_members))
+}
+
+/// Layout feasibility for plan: quote window plus a bounded tail-width template candidate.
+/// CRC search is not run here. Unsatisfiable tail width returns `search_exhausted`.
+pub(crate) fn check_layout(request: &GenerateRequest, states: &[usize]) -> ZbResult<()> {
+    plan_materialization(request, states).map(|_| ())
 }
 
 /// Generate simultaneous byte/CRC fixed points for one two-state SCC.
@@ -259,17 +304,7 @@ pub(crate) fn generate(
         assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
     let stream_len = provisional.len() - ow - fw - hw - fw;
     let total = provisional.len();
-    if total as u64 > request.limits.max_artifact_bytes
-        || 2 * total as u64 > request.limits.max_total_artifact_bytes
-        || total as u64 * 32 > request.limits.max_live_memory_bytes
-        || total as u64 * 4 > request.limits.max_decoded_bytes
-        || request.limits.max_constraint_bits < 64 * 65
-        || request.limits.max_solver_operations < (total as u64 * 16 + 1048576)
-    {
-        return Err(ZbError::resource_limited(
-            "two-node layout or solver budget exceeded",
-        ));
-    }
+    check_two_node_materialization_budget(request, total)?;
     let (mut a, sa) = assemble(
         &layouts[0],
         &layouts[1],
