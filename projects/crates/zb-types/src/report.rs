@@ -9,6 +9,21 @@ pub const REPORT_SCHEMA_V1: &str = "zb.report/v1";
 /// Frozen success-path report schema (Living `03` / `04` minimal v2).
 pub const REPORT_SCHEMA_V2: &str = "zb.report/v2";
 
+/// Task-level budget consumption after generate / verify (Living `13` §5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BudgetUsage {
+    /// Configured `max_decoded_bytes` ceiling.
+    pub max_decoded_bytes: u64,
+    /// Decoded bytes charged across member and codec self-checks.
+    pub decoded_bytes_used: u64,
+    /// Configured live-memory read ceiling.
+    pub max_live_memory_bytes: u64,
+    /// Read bytes charged against live-memory quota.
+    pub read_bytes_used: u64,
+    /// ZIP members decoded under the ledger.
+    pub members_decoded: u64,
+}
+
 /// Compact solver evidence mirrored from `zb-solver::SolveEvidence`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SolverFacts {
@@ -126,6 +141,9 @@ pub struct GenerateReport {
     /// Structured Loopy facts when a two-node gapped cycle was constructed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loopy: Option<LoopyFacts>,
+    /// Task budget ledger usage when a generate path tracked decode/read quotas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_usage: Option<BudgetUsage>,
 }
 
 impl GenerateReport {
@@ -157,6 +175,7 @@ impl GenerateReport {
             )),
             solver: None,
             loopy: None,
+            budget_usage: None,
         }
     }
 
@@ -187,6 +206,7 @@ impl GenerateReport {
             error_message: None,
             solver: None,
             loopy: None,
+            budget_usage: None,
         }
     }
 
@@ -215,6 +235,7 @@ impl GenerateReport {
             error_message: Some(err.message.clone()),
             solver: None,
             loopy: None,
+            budget_usage: None,
         }
     }
 
@@ -233,6 +254,12 @@ impl GenerateReport {
     /// Attach structured Loopy facts without mutating warnings.
     pub fn with_loopy(mut self, facts: LoopyFacts) -> Self {
         self.loopy = Some(facts);
+        self
+    }
+
+    /// Attach task budget usage without mutating warnings.
+    pub fn with_budget_usage(mut self, usage: BudgetUsage) -> Self {
+        self.budget_usage = Some(usage);
         self
     }
 }

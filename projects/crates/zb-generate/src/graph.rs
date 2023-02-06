@@ -478,6 +478,7 @@ struct CompiledGraph {
     set: ArtifactSet,
     loopy: Option<zb_types::LoopyFacts>,
     solver: Option<zb_types::SolverFacts>,
+    budget_usage: zb_types::BudgetUsage,
 }
 
 fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<CompiledGraph> {
@@ -660,6 +661,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
         },
         loopy: loopy_facts,
         solver: solver_facts,
+        budget_usage: verify_ledger.usage(),
     })
 }
 
@@ -743,7 +745,12 @@ pub(crate) fn generate_with_cancel(
     let nodes = g.nodes.len();
     let count = edges(g);
     match compile(&request, cancel) {
-        Ok(CompiledGraph { set, loopy, solver }) => {
+        Ok(CompiledGraph {
+            set,
+            loopy,
+            solver,
+            budget_usage,
+        }) => {
             let total = set.artifacts.iter().map(|a| a.bytes.len() as u64).sum();
             let mut report = GenerateReport::ok(
                 request.variant,
@@ -761,6 +768,7 @@ pub(crate) fn generate_with_cancel(
             if let Some(facts) = loopy {
                 report = report.with_loopy(facts);
             }
+            report = report.with_budget_usage(budget_usage);
             Outcome::ok(set, report)
         }
         Err(err) => Outcome::err(

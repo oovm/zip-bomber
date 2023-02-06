@@ -80,6 +80,10 @@ fn loopy_report_carries_structured_facts() {
             assert!(facts.edges.iter().all(|e| e.bytes_equal));
             assert_eq!(facts.crc_rank, solver.rank);
             assert!(report.warnings.iter().all(|w| !w.contains("crc_rank")));
+            let usage = report.budget_usage.expect("budget usage");
+            assert!(usage.members_decoded > 0);
+            assert!(usage.decoded_bytes_used > 0);
+            assert!(usage.decoded_bytes_used <= usage.max_decoded_bytes);
         }
         other => panic!("{other:?}"),
     }

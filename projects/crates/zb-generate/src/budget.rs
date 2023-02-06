@@ -5,7 +5,7 @@
 
 use acorn_codec::CodecLimits;
 use acorn_core::Budget;
-use zb_types::{GenerateLimits, ZbError, ZbResult};
+use zb_types::{BudgetUsage, GenerateLimits, ZbError, ZbResult};
 
 /// Running quotas for one generate / verify task.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +42,17 @@ impl TaskBudgetLedger {
     /// Remaining read / live-memory quota used for Acorn scans and payload reads.
     pub fn remaining_read(&self) -> u64 {
         self.remaining_read
+    }
+
+    /// Snapshot charged usage for `zb.report/v2`.
+    pub fn usage(&self) -> BudgetUsage {
+        BudgetUsage {
+            max_decoded_bytes: self.limits.max_decoded_bytes,
+            decoded_bytes_used: self.limits.max_decoded_bytes - self.remaining_decoded,
+            max_live_memory_bytes: self.limits.max_live_memory_bytes,
+            read_bytes_used: self.limits.max_live_memory_bytes - self.remaining_read,
+            members_decoded: self.members_decoded,
+        }
     }
 
     /// Reserve an Acorn parse budget for one ZIP member decode.
@@ -178,6 +189,28 @@ mod tests {
             .reserve_member_decode(50, 10, 10)
             .expect_err("third member exceeds max_members");
         assert_eq!(err.code, ErrorCode::ResourceLimited);
+    }
+
+    #[test]
+    fn hundred_members_do_not_each_get_default_budget() {
+        let limits = GenerateLimits {
+            max_members: 100,
+            max_decoded_bytes: 128 * 1024,
+            max_live_memory_bytes: 256 * 1024,
+            ..GenerateLimits::small_sample()
+        };
+        let mut ledger = TaskBudgetLedger::new(limits);
+        for _ in 0..100 {
+            let budget = ledger
+                .reserve_member_decode(2048, 512, 1024)
+                .expect("member fits under shared ledger");
+            assert_eq!(budget.max_decoded_bytes, 1024);
+            assert!(budget.max_decoded_bytes < 64 * 1024 * 1024);
+            ledger
+                .settle_member_decode(1024, 512)
+                .expect("member settles");
+        }
+        assert_eq!(ledger.usage().members_decoded, 100);
     }
 
     #[test]
