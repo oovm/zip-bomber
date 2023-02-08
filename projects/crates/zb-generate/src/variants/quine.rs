@@ -12,7 +12,7 @@ use zb_types::{
 use crate::deflate::{decode_raw_deflate, encode_fixed_stream, encode_stored_stream, FixedOp};
 use crate::paths::validate_quine_members;
 use crate::templates::{encode_recursive_stream, list_quine_templates, QuineTemplateMeta};
-use crate::PlanBudgetEstimate;
+use crate::{PlanBudgetEstimate, TaskBudgetLedger};
 
 use super::ArtifactBundle;
 
@@ -405,9 +405,11 @@ fn try_template(
         ));
     }
 
-    let decoded = decode_raw_deflate(
+    let mut verify_ledger = TaskBudgetLedger::new(request.limits.clone());
+    let decoded = crate::deflate::decode_raw_deflate_with_ledger(
         &archive[prefix_len..prefix_len + stream.bytes.len()],
         archive_len as u64,
+        &mut verify_ledger,
     )?;
     if decoded != archive {
         return Err(ZbError::verification_failed(
@@ -415,12 +417,14 @@ fn try_template(
         ));
     }
     verify_ordinary_members(&archive, &ordinary)?;
-    let verified = crate::verify::verify_zip_bytes(&archive)?;
+    let verified =
+        crate::verify::verify_zip_bytes_with_ledger(&archive, &mut verify_ledger)?;
     if !verified.ok {
         return Err(ZbError::verification_failed(
             "Acorn quine verification failed",
         ));
     }
+    let budget_usage = verify_ledger.usage();
 
     let artifact = Artifact {
         id: ArtifactId::new("quine-root"),
@@ -461,7 +465,8 @@ fn try_template(
         free_bits: evidence.free_bits as u32,
         equations_used: evidence.equations_used as u32,
         problem_digest: evidence.problem_digest.clone(),
-    });
+    })
+    .with_budget_usage(budget_usage);
     Ok(ArtifactBundle {
         artifacts: ArtifactSet {
             root: artifact_id.clone(),

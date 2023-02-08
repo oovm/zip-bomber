@@ -3,7 +3,7 @@
 use acorn_source::MemorySource;
 use acorn_zip::{decode_member_with_facts, index_zip_bytes};
 use serde::{Deserialize, Serialize};
-use zb_types::{ArtifactSet, CycleVerifyFacts, GenerateLimits, ZbError, ZbResult};
+use zb_types::{ArtifactSet, BudgetUsage, CycleVerifyFacts, GenerateLimits, ZbError, ZbResult};
 
 use crate::budget::TaskBudgetLedger;
 
@@ -100,6 +100,13 @@ pub struct VerificationReport {
     pub cycle: Option<CycleVerifyFacts>,
 }
 
+/// Verify one archive and return charged task budget usage for `zb.report/v2`.
+pub fn verify_zip_task_budget(bytes: &[u8], limits: &GenerateLimits) -> ZbResult<BudgetUsage> {
+    let mut ledger = TaskBudgetLedger::new(limits.clone());
+    verify_zip_bytes_with_ledger(bytes, &mut ledger)?;
+    Ok(ledger.usage())
+}
+
 /// Verify emitted ZIP bytes through an independent Acorn parser path.
 pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
     verify_zip_bytes_with_limits(bytes, &GenerateLimits::small_sample())
@@ -114,7 +121,7 @@ pub fn verify_zip_bytes_with_limits(
     verify_zip_bytes_with_ledger(bytes, &mut ledger)
 }
 
-fn verify_zip_bytes_with_ledger(
+pub(crate) fn verify_zip_bytes_with_ledger(
     bytes: &[u8],
     ledger: &mut TaskBudgetLedger,
 ) -> ZbResult<VerificationReport> {

@@ -38,6 +38,9 @@ fn finite_bomb_depth_two_emits_nested_zip() {
             assert!(hay.contains("n1/0.zip"));
             assert_eq!(report.status, ReportStatus::Ok);
             assert!(report.archive_bytes.unwrap() > 0);
+            let usage = report.budget_usage.expect("budget usage");
+            assert!(usage.members_decoded > 0);
+            assert!(usage.decoded_bytes_used > 0);
             assert_eq!(report.declared_uncompressed, Some(8));
         }
         Outcome::Err { error, .. } => panic!("bomb should succeed: {error}"),

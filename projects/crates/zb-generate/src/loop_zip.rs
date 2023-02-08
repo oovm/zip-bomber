@@ -1,8 +1,8 @@
 //! Two-node ZIP constructor with explicit inter-record gaps and legal TLV padding.
 //! Codec construction follows the alternating program in DOI 10.3390/app14219797.
-use crate::deflate::decode_raw_deflate;
+use crate::deflate::decode_raw_deflate_with_ledger;
 use crate::templates::loopy::encode_loop;
-use crate::{emit_stored_archive, PlanBudgetEstimate, StoredMember};
+use crate::{emit_stored_archive, PlanBudgetEstimate, StoredMember, TaskBudgetLedger};
 use zb_solver::{
     crc32, solve_shared_crc_with_cancel, CancelToken, CrcByteSlot, SharedCrcArchive, SolveOutcome,
     SolverBudget,
@@ -385,9 +385,10 @@ pub(crate) fn generate(
             "loop CRC solution failed back substitution",
         ));
     }
+    let mut verify_ledger = TaskBudgetLedger::new(request.limits.clone());
     for (bytes, expected) in [(&a, &b), (&b, &a)] {
         let data = &bytes[ow + fw + hw..ow + fw + hw + stream_len];
-        let out = decode_raw_deflate(data, total as u64)?;
+        let out = decode_raw_deflate_with_ledger(data, total as u64, &mut verify_ledger)?;
         if out != *expected {
             return Err(ZbError::verification_failed(
                 "loop complete byte equality failed",

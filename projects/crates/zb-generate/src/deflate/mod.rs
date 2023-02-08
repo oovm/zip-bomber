@@ -7,7 +7,7 @@ mod encode;
 use zb_types::{zip_layout, ErrorCode, GenerateRequest, ZbError, ZbResult};
 
 pub use bits::BitWriter;
-pub use decode::decode_raw_deflate;
+pub use decode::{decode_raw_deflate, decode_raw_deflate_with_ledger};
 pub use encode::{
     encode_blocks, encode_blocks_with_finality, encode_fixed_stream, encode_stored_stream,
     DeflateBlock, FixedOp,

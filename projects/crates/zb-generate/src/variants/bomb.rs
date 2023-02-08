@@ -33,6 +33,14 @@ pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
         "finite nested bomb depth={} branch={} unique_bytes={} logical_bytes={}",
         built.depth, built.branch, built.unique_bytes, built.logical_bytes
     )];
+    let root_bytes = built
+        .artifacts
+        .artifacts
+        .iter()
+        .find(|a| a.id == built.artifacts.root)
+        .map(|a| a.bytes.as_slice())
+        .ok_or_else(|| ZbError::new(ErrorCode::Internal, "bomb root artifact missing"))?;
+    let budget_usage = crate::verify::verify_zip_task_budget(root_bytes, &request.limits)?;
     Ok(ArtifactBundle {
         artifacts: built.artifacts,
         report: GenerateReport::ok(
@@ -44,7 +52,8 @@ pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
             built.logical_bytes,
             warnings,
         )
-        .with_profile(request.profile.clone()),
+        .with_profile(request.profile.clone())
+        .with_budget_usage(budget_usage),
     })
 }
 

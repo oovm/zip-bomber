@@ -22,6 +22,9 @@ fn generated_quine_is_complete_and_self_identical() {
                 solver.problem_digest.as_deref(),
                 Some("quine.crc.shared/v1")
             );
+            let usage = report.budget_usage.expect("budget usage");
+            assert!(usage.members_decoded > 0);
+            assert!(usage.decoded_bytes_used > 0);
             value
         }
         Outcome::Err { error, .. } => panic!("quine generation failed: {error}"),
