@@ -226,6 +226,7 @@ function parseReport(reportJson: string, fallback: VariantId): GenerateReport {
             crc_strategy: parsed.crc_strategy,
             solver: parsed.solver ?? undefined,
             loopy: parsed.loopy ?? undefined,
+            budget_usage: parsed.budget_usage ?? undefined,
         };
     } catch {
         const report = notImplementedReport(fallback);

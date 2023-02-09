@@ -82,6 +82,15 @@ export type GenerateReport = {
     crc_strategy?: string;
     solver?: SolverFacts | null;
     loopy?: LoopyFacts | null;
+    budget_usage?: BudgetUsage | null;
+};
+
+export type BudgetUsage = {
+    max_decoded_bytes: number;
+    decoded_bytes_used: number;
+    max_live_memory_bytes: number;
+    read_bytes_used: number;
+    members_decoded: number;
 };
 
 export type Artifact = {

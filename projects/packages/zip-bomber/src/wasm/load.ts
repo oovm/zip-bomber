@@ -12,51 +12,45 @@ import {
     type VariantId,
     type ZipBomberApi,
 } from "../types.js";
+import {
+    cancelledWasmGenerateResult,
+    mapGenerateWasmJson,
+    type WasmGenerateJson,
+    bytesToB64,
+    b64ToBytes,
+} from "./result.js";
+import {
+    runGenerateInWorker,
+    supportsWasmWorker,
+} from "./cancellable.js";
+import { initWasmBinding, type WasmBinding } from "./worker-runtime.js";
 
-const ARTIFACT_PACKAGE = "@sxo/zip-bomber-unknown-wasm32";
+const WORKER_URL = new URL("./generate-worker.js", import.meta.url);
 
 export type ZipBomberWasmApi = {
     listVariants: () => VariantId[];
     createZipBomber: () => Promise<ZipBomberApi>;
 };
 
-type WasmBinding = {
-    listVariants?: () => string;
+type WasmBindingFull = WasmBinding & {
     capabilitiesJson?: () => string;
     generateVariantJson?: (variant: string) => string;
-    generateRequestJson?: (requestJson: string) => string;
     planVariantJson?: (variant: string) => string;
     planRequestJson?: (requestJson: string) => string;
     verifyZipBytesJson?: (bytesBase64: string) => string;
     verifyArtifactSetJson?: (setJson: string, specJson?: string | null) => string;
     verifyArtifactSetForRequestJson?: (setJson: string, requestJson: string) => string;
-    default?: ((input?: unknown) => Promise<unknown>) | {
+    default?: WasmBinding["default"] & {
         listVariants?: () => string;
         capabilitiesJson?: () => string;
         generateVariantJson?: (variant: string) => string;
-        generateRequestJson?: (requestJson: string) => string;
         planRequestJson?: (requestJson: string) => string;
         verifyArtifactSetJson?: (setJson: string, specJson?: string | null) => string;
         verifyArtifactSetForRequestJson?: (setJson: string, requestJson: string) => string;
     };
 };
 
-function bytesToB64(bytes: Uint8Array): string {
-    let text = "";
-    for (const byte of bytes) text += String.fromCharCode(byte);
-    return btoa(text);
-}
-
-function b64ToBytes(b64: string): Uint8Array {
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i += 1) {
-        out[i] = bin.charCodeAt(i);
-    }
-    return out;
-}
-
-function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
+function hooksFromWasm(binding: WasmBindingFull): ZipBomberBackendHooks {
     const fromDefault = typeof binding.default === "object" ? binding.default : undefined;
     const generateVariantJson =
         binding.generateVariantJson ?? fromDefault?.generateVariantJson;
@@ -148,32 +142,26 @@ function hooksFromWasm(binding: WasmBinding): ZipBomberBackendHooks {
               }
             : undefined,
         generateRequestJson: generateRequestJson
-            ? (requestJson) => {
-                  const raw = JSON.parse(generateRequestJson(requestJson)) as {
-                      ok: boolean;
-                      bytesBase64?: string;
-                      root?: string;
-                      artifacts?: Array<{id:string;bytesBase64:string;byteLength?:number;digest?:string}>;
-                      logicalNodeMap?: string[];
-                      report?: unknown;
-                      error?: {
-                          category?: string;
-                          code?: string;
-                          message?: string;
-                      };
-                  };
-                  return {
-                      exitCode: raw.ok ? 0 : 2,
-                      ok: raw.ok,
-                      bytes: raw.bytesBase64 ? b64ToBytes(raw.bytesBase64) : undefined,
-                      root: raw.root,
-                      artifacts: raw.artifacts?.map(a=>({id:a.id,bytes:b64ToBytes(a.bytesBase64),byteLength:String(a.byteLength ?? 0),digest:a.digest ?? ""})),
-                      logicalNodeMap: raw.logicalNodeMap,
-                      reportJson: JSON.stringify(raw.report ?? {}),
-                      errorCategory: raw.error?.category,
-                      errorCode: raw.error?.code,
-                      errorMessage: raw.error?.message,
-                  };
+            ? (requestJson) =>
+                  mapGenerateWasmJson(
+                      JSON.parse(generateRequestJson(requestJson)) as WasmGenerateJson,
+                  )
+            : undefined,
+        generateRequestCancellable: generateRequestJson
+            ? (requestJson, signal) => {
+                  if (signal?.aborted) {
+                      return Promise.resolve(cancelledWasmGenerateResult());
+                  }
+                  if (signal && supportsWasmWorker()) {
+                      return runGenerateInWorker(WORKER_URL, requestJson, signal);
+                  }
+                  return Promise.resolve(
+                      mapGenerateWasmJson(
+                          JSON.parse(
+                              generateRequestJson(requestJson),
+                          ) as WasmGenerateJson,
+                      ),
+                  );
               }
             : undefined,
         generateVariant: generateVariantJson
@@ -225,19 +213,7 @@ export async function loadZipBomberWasm(): Promise<ZipBomberWasmApi> {
     let listed: VariantId[] | null = null;
     let hooks: ZipBomberBackendHooks = {};
     try {
-        const mod = (await import(ARTIFACT_PACKAGE)) as WasmBinding;
-        if (typeof mod.default === "function") {
-            if (typeof process !== "undefined" && process.versions?.node) {
-                const { readFile } = await import("node:fs/promises");
-                const { createRequire } = await import("node:module");
-                const { pathToFileURL } = await import("node:url");
-                const moduleUrl = pathToFileURL(createRequire(import.meta.url).resolve(ARTIFACT_PACKAGE));
-                const bytes = await readFile(new URL("./zb_wasm_bg.wasm", moduleUrl));
-                await mod.default({ module_or_path: bytes });
-            } else {
-                await mod.default();
-            }
-        }
+        const mod = (await initWasmBinding()) as WasmBindingFull;
         const listVariants = mod.listVariants ?? (typeof mod.default === "object" ? mod.default.listVariants : undefined);
         if (typeof listVariants === "function") {
             listed = listVariants()
