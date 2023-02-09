@@ -283,7 +283,7 @@ pub(crate) fn verify_artifact_set_with_ledger(
     })
 }
 
-fn is_empty_zip(bytes: &[u8]) -> bool {
+pub(crate) fn is_empty_zip(bytes: &[u8]) -> bool {
     bytes.len() == 22
         && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06]
         && bytes[4..22].iter().all(|b| *b == 0)

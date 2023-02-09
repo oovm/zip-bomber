@@ -1,6 +1,6 @@
 //! Independent cycle edge and byte-period verification (Living `07` / `11`).
 
-use acorn_source::{ByteSource, MemorySource};
+use acorn_source::MemorySource;
 use acorn_zip::decode_member_with_facts;
 use zb_types::{
     ArchiveGraphMember, ArchiveGraphSpec, ArtifactSet, CycleVerifyFacts, ErrorCode, FractalMode,
@@ -10,7 +10,7 @@ use zb_types::{
 
 use crate::budget::TaskBudgetLedger;
 
-use super::zip::{verify_artifact_set_with_ledger, VerificationReport};
+use super::{materialize_decoded_bytes, zip::{verify_artifact_set_with_ledger, VerificationReport}};
 
 /// Minimum positive period of a cyclic byte word.
 ///
@@ -267,16 +267,11 @@ fn verify_one_edge(
         ))
     })?;
     ledger.settle_member_decode(facts.decoded_size as u64, member.compressed_size)?;
-    let decoded = match source.length().unwrap_or(0) {
-        0 => Vec::new(),
-        len => source
-            .read_range(acorn_source::SourceRange { start: 0, len })
-            .map_err(|e| {
-                ZbError::verification_failed(format!(
-                    "read `{from_id}` member `{member_path}` failed: {e}"
-                ))
-            })?,
-    };
+    let decoded = materialize_decoded_bytes(&source, &facts).map_err(|e| {
+        ZbError::verification_failed(format!(
+            "read `{from_id}` member `{member_path}` failed: {e}"
+        ))
+    })?;
     if !facts.checksum_ok() || decoded != to_bytes {
         return Err(ZbError::verification_failed(format!(
             "edge `{from_id}` --`{member_path}`--> `{to_id}` inflate mismatch (crc_ok={} decoded={} target={})",

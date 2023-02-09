@@ -2,7 +2,7 @@
 use crate::{
     emit_stored_archive, PlanBudgetEstimate, PlanSummary, StoredMember, TaskBudgetLedger,
 };
-use acorn_source::ByteSource;
+use crate::verify::{materialize_decoded_bytes, zip::is_empty_zip};
 use std::collections::{BTreeMap, BTreeSet};
 use zb_solver::CancelToken;
 use zb_types::{
@@ -569,6 +569,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
         let mut needed = BTreeSet::new();
         let mut pending = vec![(g.root, depth)];
         while let Some((n, d)) = pending.pop() {
+            cancel.check()?;
             if !needed.insert((n, d)) {
                 continue;
             }
@@ -588,7 +589,9 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
         // Living 05: plan expansion multiplicity and unique bytes before emit.
         plan_finite_expansion(request, g, depth, &needed)?;
         for d in 0..=depth {
+            cancel.check()?;
             for &(n, _) in needed.iter().filter(|(_, remaining)| *remaining == d) {
+                cancel.check()?;
                 let list = if d == 0 {
                     g.nodes[n]
                         .terminal
@@ -609,6 +612,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
         }
     } else {
         for c in components {
+            cancel.check()?;
             if c.len() == 2 {
                 let (archives, facts, solver) = crate::loop_zip::generate(request, &c, cancel)?;
                 loopy_facts = Some(facts);
@@ -663,6 +667,7 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
     // Independent parser verifies every declared member, including the target identity.
     let mut verify_ledger = TaskBudgetLedger::new(request.limits.clone());
     for (&(n, d), bytes) in &compiled {
+        cancel.check()?;
         let list = if g.mode == FractalMode::Finite && d == 0 {
             g.nodes[n].terminal.as_ref().unwrap()
         } else {
@@ -686,12 +691,13 @@ fn compile(request: &GenerateRequest, cancel: &CancelToken) -> ZbResult<Compiled
                 "graph verification decoded budget exceeded",
             ));
         }
-        verify_members(bytes, &expected, &mut verify_ledger)?;
+        verify_members(bytes, &expected, &mut verify_ledger, cancel)?;
     }
     let root_key = (g.root, depth);
     let mut artifacts: Vec<Artifact> = Vec::new();
     let mut mapping = BTreeMap::new();
     for (key, bytes) in compiled {
+        cancel.check()?;
         let id = if let Some(existing) = artifacts.iter().find(|a| a.bytes == bytes) {
             existing.id.clone()
         } else {
@@ -726,9 +732,10 @@ fn verify_members(
     bytes: &[u8],
     expected: &[StoredMember],
     ledger: &mut TaskBudgetLedger,
+    cancel: &CancelToken,
 ) -> ZbResult<()> {
     if expected.is_empty() {
-        if bytes.len() == 22 && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06] {
+        if is_empty_zip(bytes) {
             return Ok(());
         }
         return Err(ZbError::verification_failed(
@@ -741,6 +748,7 @@ fn verify_members(
         return Err(ZbError::verification_failed("graph member count mismatch"));
     }
     for (actual, expected) in index.members.iter().zip(expected) {
+        cancel.check()?;
         if actual.path != expected.path {
             return Err(ZbError::verification_failed(
                 "graph member order or path mismatch",
@@ -765,19 +773,12 @@ fn verify_members(
             ))
         })?;
         ledger.settle_member_decode(facts.decoded_size as u64, actual.compressed_size)?;
-        // Empty stored files and directory entries decode to a zero-length source.
-        // Acorn rejects `read_range(0, 0)` with unexpected eof, so skip that call.
-        let decoded = match source.length().unwrap_or(0) {
-            0 => Vec::new(),
-            len => source
-                .read_range(acorn_source::SourceRange { start: 0, len })
-                .map_err(|e| {
-                    ZbError::verification_failed(format!(
-                        "graph member `{}` read failed: {e}",
-                        expected.path
-                    ))
-                })?,
-        };
+        let decoded = materialize_decoded_bytes(&source, &facts).map_err(|e| {
+            ZbError::verification_failed(format!(
+                "graph member `{}` read failed: {e}",
+                expected.path
+            ))
+        })?;
         if !facts.checksum_ok() || decoded != expected.payload {
             return Err(ZbError::verification_failed(format!(
                 "graph member `{}` differs from declared target",

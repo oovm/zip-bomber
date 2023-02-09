@@ -1,7 +1,10 @@
 //! Independent archive verification (Acorn-backed later).
 
+mod acorn_source;
 pub mod cycle;
 pub mod zip;
+
+pub(crate) use acorn_source::materialize_decoded_bytes;
 
 pub use cycle::{
     cycle_edges_from_graph, minimum_byte_period, verify_artifact_set_for_request,

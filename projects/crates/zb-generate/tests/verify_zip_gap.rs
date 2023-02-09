@@ -30,6 +30,25 @@ fn verifies_emitted_stored_archive() {
 }
 
 #[test]
+fn verifies_empty_stored_file_and_directory_entry() {
+    let bytes = emit_stored_archive(&[
+        StoredMember {
+            path: "empty.txt".into(),
+            payload: Vec::new(),
+        },
+        StoredMember {
+            path: "dir/".into(),
+            payload: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let report = verify_zip_bytes(&bytes).expect("verify");
+    assert!(report.ok);
+    assert!(report.notes.iter().any(|n| n.contains("indexed_members=2")));
+    assert!(report.notes.iter().any(|n| n.contains("decoded=0")));
+}
+
+#[test]
 fn verifies_finite_bomb_root() {
     match generate(GenerateRequest::bare(VariantKind::Bomb)) {
         Outcome::Ok { value, .. } => {
