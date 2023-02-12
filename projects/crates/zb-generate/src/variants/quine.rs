@@ -9,7 +9,9 @@ use zb_types::{
     ZbError, ZbResult, ZIP_PROFILE_V0,
 };
 
-use crate::deflate::{decode_raw_deflate, encode_fixed_stream, encode_stored_stream, FixedOp};
+use acorn_codec::compression::deflate::Symbol;
+
+use crate::deflate::{decode_raw_deflate, encode_fixed_stream, encode_stored_stream};
 use crate::paths::validate_quine_members;
 use crate::templates::{encode_recursive_stream, list_quine_templates, QuineTemplateMeta};
 use crate::{PlanBudgetEstimate, TaskBudgetLedger};
@@ -383,8 +385,7 @@ fn try_template(
             },
             SolveOutcome::ResourceLimited { message } => ZbError::resource_limited(message),
             SolveOutcome::Cancelled { message } => ZbError::cancelled(message),
-            SolveOutcome::InvalidProblem { message }
-            | SolveOutcome::InternalError { message } => {
+            SolveOutcome::InvalidProblem { message } | SolveOutcome::InternalError { message } => {
                 ZbError::new(zb_types::ErrorCode::Internal, message)
             }
             SolveOutcome::Sat { .. } => unreachable!(),
@@ -417,8 +418,7 @@ fn try_template(
         ));
     }
     verify_ordinary_members(&archive, &ordinary)?;
-    let verified =
-        crate::verify::verify_zip_bytes_with_ledger(&archive, &mut verify_ledger)?;
+    let verified = crate::verify::verify_zip_bytes_with_ledger(&archive, &mut verify_ledger)?;
     if !verified.ok {
         return Err(ZbError::verification_failed(
             "Acorn quine verification failed",
@@ -532,7 +532,7 @@ fn compress_payload(data: &[u8]) -> ZbResult<(u16, Vec<u8>)> {
         ));
     }
     let stored = encode_stored_stream(data)?;
-    let literals = data.iter().map(|&b| FixedOp::Literal(b)).collect::<Vec<_>>();
+    let literals = data.iter().map(|&b| Symbol::Literal(b)).collect::<Vec<_>>();
     let fixed = encode_fixed_stream(&literals)?;
     let (method, payload) = if fixed.len() < stored.len() {
         (METHOD_DEFLATE, fixed)

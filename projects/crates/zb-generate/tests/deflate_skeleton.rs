@@ -1,4 +1,4 @@
-use zb_generate::{chain_repeats, encode_stored_block, expand_skeleton, SkeletonOp};
+use zb_generate::{chain_repeats, encode_stored_stream, expand_skeleton, SkeletonOp};
 
 #[test]
 fn expand_repeat_with_overlap() {
@@ -44,7 +44,7 @@ fn chain_long_repeat() {
 
 #[test]
 fn stored_block_is_legal_raw_deflate() {
-    let block = encode_stored_block(b"hi", true).unwrap();
+    let block = encode_stored_stream(b"hi").unwrap();
     // BFINAL=1, BTYPE=00, then padded to byte, then LEN/NLEN + data.
     assert_eq!(block[0] & 0b111, 0b001);
     let out = zb_generate::decode_raw_deflate(&block, 64).unwrap();

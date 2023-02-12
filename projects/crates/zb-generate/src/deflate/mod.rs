@@ -1,18 +1,67 @@
 //! DEFLATE block planning and fixed stored/fixed-Huffman skeleton helpers.
+//!
+//! The bit-level RFC 1951 primitives live in `acorn-codec`. This module only
+//! holds zb's own template-side concepts: repeat chaining, skeleton expansion,
+//! and the error mapping between Acorn codec failures and zb errors.
 
-mod bits;
 mod decode;
-mod encode;
 
+use acorn_codec::{
+    bit::BitWriter,
+    compression::deflate::{write_fixed_block, write_stored_block, Symbol},
+    CodecError,
+};
 use zb_types::{zip_layout, ErrorCode, GenerateRequest, ZbError, ZbResult};
 
-pub use bits::BitWriter;
-pub use decode::{decode_raw_deflate, decode_raw_deflate_with_ledger};
-pub use encode::{
-    encode_blocks, encode_blocks_with_finality, encode_fixed_stream, encode_stored_stream,
-    DeflateBlock, FixedOp,
+pub use acorn_codec::compression::deflate::{
+    DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock,
 };
-pub(crate) use encode::{encode_fixed, encode_stored};
+pub use decode::{decode_raw_deflate, decode_raw_deflate_with_ledger};
+
+/// Maps an Acorn codec error raised while emitting a planned DEFLATE block.
+///
+/// A limit rejection stays a resource limit so the caller does not report a
+/// budget problem as an internal failure.
+pub(crate) fn block_error(error: CodecError) -> ZbError {
+    if error.is_resource_limit() {
+        return ZbError::resource_limited(format!("deflate block emit rejected: {error}"));
+    }
+    ZbError::new(
+        ErrorCode::Internal,
+        format!("deflate block emit rejected: {error}"),
+    )
+}
+
+/// Writes one fixed-Huffman block at the writer's current bit position.
+pub(crate) fn write_fixed(
+    writer: &mut BitWriter,
+    symbols: &[Symbol],
+    final_block: bool,
+) -> ZbResult<()> {
+    write_fixed_block(writer, symbols, final_block).map_err(block_error)
+}
+
+/// Writes one stored block at the writer's current bit position.
+pub(crate) fn write_stored(writer: &mut BitWriter, data: &[u8], final_block: bool) -> ZbResult<()> {
+    write_stored_block(writer, data, final_block).map_err(block_error)
+}
+
+/// Encodes a payload as a single final stored block.
+pub fn encode_stored_stream(payload: &[u8]) -> ZbResult<Vec<u8>> {
+    let mut plan = DeflateBlockPlan::new();
+    plan.push(
+        DeflateBlock::Stored(StoredBlock::new(payload.to_vec())),
+        true,
+    );
+    plan.encode().map_err(block_error)
+}
+
+/// Encodes a symbol sequence as a single final fixed-Huffman block.
+pub fn encode_fixed_stream(symbols: &[Symbol]) -> ZbResult<Vec<u8>> {
+    let mut plan = DeflateBlockPlan::new();
+    plan.push(DeflateBlock::Fixed(FixedBlock::new(symbols.to_vec())), true);
+    plan.encode().map_err(block_error)
+}
 
 /// Placeholder deflate plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,8 +121,7 @@ pub fn validate_repeat(length: u16, distance: u16, emitted: usize) -> ZbResult<(
 
 /// Symbolically expand a fixed skeleton into concrete output bytes.
 ///
-/// Only constant literals and validated repeats are accepted. Variable slots for
-/// the GF(2) solver will be layered on later without changing opcode positions.
+/// Only constant literals and validated repeats are accepted.
 pub fn expand_skeleton(ops: &[SkeletonOp]) -> ZbResult<Vec<u8>> {
     let mut out = Vec::new();
     for op in ops {
@@ -132,20 +180,4 @@ pub fn chain_repeats(total_length: u32, distance: u16) -> ZbResult<Vec<SkeletonO
         remaining -= len;
     }
     Ok(ops)
-}
-
-/// Encode a single stored block as a complete raw DEFLATE stream (`BFINAL=1`).
-///
-/// Unlike the earlier LEN/NLEN-only oracle helper, this emits a legal RFC 1951
-/// stored block including the 3-bit header and byte alignment. Multi-block
-/// streams should call [`encode_blocks`]. The `final_block` flag is retained for
-/// call-site compatibility and must be `true` for this helper.
-pub fn encode_stored_block(payload: &[u8], final_block: bool) -> ZbResult<Vec<u8>> {
-    if !final_block {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            "encode_stored_block only emits a final one-block stream; use encode_blocks",
-        ));
-    }
-    encode_stored_stream(payload)
 }

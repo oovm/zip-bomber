@@ -1,16 +1,31 @@
-use zb_generate::{decode_raw_deflate, encode_blocks, DeflateBlock, FixedOp};
+use zb_generate::{
+    decode_raw_deflate, DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol,
+};
 
-fn r4() -> Vec<FixedOp> {
-    vec![
-        FixedOp::Repeat {
+fn r4() -> DeflateBlock {
+    DeflateBlock::Fixed(FixedBlock::new(vec![
+        Symbol::Match {
             length: 10,
             distance: 20,
         },
-        FixedOp::Repeat {
+        Symbol::Match {
             length: 10,
             distance: 20,
         },
-    ]
+    ]))
+}
+
+/// Blocks are written back to back, so every entry carries its own finality.
+fn plan(blocks: &[(DeflateBlock, bool)]) -> Vec<u8> {
+    let mut plan = DeflateBlockPlan::new();
+    for (block, final_block) in blocks {
+        plan.push(block.clone(), *final_block);
+    }
+    plan.encode().expect("encode")
+}
+
+fn stored(data: &[u8]) -> DeflateBlock {
+    DeflateBlock::Stored(StoredBlock::new(data.to_vec()))
 }
 
 #[test]
@@ -19,18 +34,17 @@ fn appending_terminator_does_not_fix_core_identity() {
     let data1 = vec![0x11u8; 20];
     let data2 = vec![0x22u8; 20];
     let data3 = vec![0x33u8; 20];
-    let stream = encode_blocks(&[
-        DeflateBlock::Stored(vec![]),
-        DeflateBlock::Stored(vec![]),
-        DeflateBlock::Stored(vec![]),
-        DeflateBlock::Stored(data1),
-        DeflateBlock::Fixed(r4()),
-        DeflateBlock::Stored(data2),
-        DeflateBlock::Fixed(r4()),
-        DeflateBlock::Stored(data3),
-        DeflateBlock::Stored(vec![]), // final empty
-    ])
-    .unwrap();
+    let stream = plan(&[
+        (stored(&[]), false),
+        (stored(&[]), false),
+        (stored(&[]), false),
+        (stored(&data1), false),
+        (r4(), false),
+        (stored(&data2), false),
+        (r4(), false),
+        (stored(&data3), false),
+        (stored(&[]), true), // final empty
+    ]);
     eprintln!("len with trailing empty final={}", stream.len());
     eprintln!(
         "hdr at 75..80 (should be nonfinal)={:02x?}",
@@ -50,17 +64,16 @@ fn asymmetric_core_has_a_constant_finality_conflict() {
     let mut data2 = vec![0u8; 20];
     let mut data3 = vec![0u8; 20];
     for round in 0..8 {
-        let stream = encode_blocks(&[
-            DeflateBlock::Stored(vec![]),
-            DeflateBlock::Stored(vec![]),
-            DeflateBlock::Stored(vec![]),
-            DeflateBlock::Stored(data1.clone()),
-            DeflateBlock::Fixed(r4()),
-            DeflateBlock::Stored(data2.clone()),
-            DeflateBlock::Fixed(r4()),
-            DeflateBlock::Stored(data3.clone()),
-        ])
-        .unwrap();
+        let stream = plan(&[
+            (stored(&[]), false),
+            (stored(&[]), false),
+            (stored(&[]), false),
+            (stored(&data1), false),
+            (r4(), false),
+            (stored(&data2), false),
+            (r4(), false),
+            (stored(&data3), true),
+        ]);
         assert_eq!(stream.len(), 100);
         let l0 = stream[0..5].to_vec();
         let l4_nf = stream[15..20].to_vec();
@@ -69,17 +82,16 @@ fn asymmetric_core_has_a_constant_finality_conflict() {
         data1 = [&l0[..], &l0[..], &l0[..], &l4_nf[..]].concat();
         data2 = [&r4b[..], &l4_nf[..], &r4b[..], &l4_f[..]].concat();
         data3 = l0.repeat(4);
-        let cand = encode_blocks(&[
-            DeflateBlock::Stored(vec![]),
-            DeflateBlock::Stored(vec![]),
-            DeflateBlock::Stored(vec![]),
-            DeflateBlock::Stored(data1.clone()),
-            DeflateBlock::Fixed(r4()),
-            DeflateBlock::Stored(data2.clone()),
-            DeflateBlock::Fixed(r4()),
-            DeflateBlock::Stored(data3.clone()),
-        ])
-        .unwrap();
+        let cand = plan(&[
+            (stored(&[]), false),
+            (stored(&[]), false),
+            (stored(&[]), false),
+            (stored(&data1), false),
+            (r4(), false),
+            (stored(&data2), false),
+            (r4(), false),
+            (stored(&data3), true),
+        ]);
         let out = decode_raw_deflate(&cand, cand.len() as u64).expect("inflate");
         eprintln!(
             "round {round}: inflate==cand {} (inflen={})",

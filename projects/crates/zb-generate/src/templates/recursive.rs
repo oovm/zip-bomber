@@ -3,9 +3,13 @@
 //! Adapted from the recursive construction in Van Mello and Audenaert (2024).
 //! See THIRD_PARTY_NOTICES.md for the accompanying implementation license.
 
+use acorn_codec::{
+    bit::{BitOrder, BitWriter},
+    compression::deflate::Symbol,
+};
 use zb_types::{ErrorCode, ZbError, ZbResult};
 
-use crate::deflate::{chain_repeats, encode_fixed, encode_stored, BitWriter, FixedOp, SkeletonOp};
+use crate::deflate::{chain_repeats, write_fixed, write_stored, SkeletonOp};
 
 const R4: [u8; 5] = [0x42, 0x88, 0x21, 0xc4, 0x00];
 
@@ -31,7 +35,7 @@ pub(crate) fn stored(payload: &[u8]) -> ZbResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn repeat_ops(length: usize) -> ZbResult<Vec<FixedOp>> {
+fn repeat_ops(length: usize) -> ZbResult<Vec<Symbol>> {
     if length > 32768 {
         return Err(ZbError::resource_limited(
             "recursive copy exceeds DEFLATE window",
@@ -40,10 +44,14 @@ fn repeat_ops(length: usize) -> ZbResult<Vec<FixedOp>> {
     chain_repeats(length as u32, length as u16)?
         .into_iter()
         .map(|op| match op {
-            SkeletonOp::Repeat { length, distance } => Ok(FixedOp::Repeat { length, distance }),
+            SkeletonOp::Repeat { length, distance } => Ok(Symbol::Match { length, distance }),
             _ => Err(ZbError::new(ErrorCode::Internal, "unexpected copy opcode")),
         })
         .collect()
+}
+
+fn writer() -> BitWriter {
+    BitWriter::new(BitOrder::LeastSignificantBitFirst)
 }
 
 /// A five-byte repeat fragment may borrow up to five trailing EOB zero bits
@@ -58,22 +66,22 @@ pub(crate) fn five_byte_repeat(length: usize) -> ZbResult<Option<Vec<u8>>> {
         if right > 258 {
             continue;
         }
-        let mut writer = BitWriter::new();
-        encode_fixed(
+        let mut writer = writer();
+        write_fixed(
             &mut writer,
             &[
-                FixedOp::Repeat {
+                Symbol::Match {
                     length: left as u16,
                     distance: length as u16,
                 },
-                FixedOp::Repeat {
+                Symbol::Match {
                     length: right as u16,
                     distance: length as u16,
                 },
             ],
             false,
         )?;
-        if (40..=45).contains(&writer.bit_len()) {
+        if (40..=45).contains(&writer.position().total_bits()) {
             let mut bytes = writer.finish();
             bytes.truncate(5);
             return Ok(Some(bytes));
@@ -86,19 +94,19 @@ pub(crate) fn aligned_repeat(length: usize) -> ZbResult<Vec<u8>> {
     if let Some(bytes) = five_byte_repeat(length)? {
         return Ok(bytes);
     }
-    let mut writer = BitWriter::new();
-    encode_fixed(&mut writer, &repeat_ops(length)?, false)?;
+    let mut writer = writer();
+    write_fixed(&mut writer, &repeat_ops(length)?, false)?;
     // Include the entire empty block in the quoted fragment: it is a legal
     // zero-output alignment operation, not padding between compressed blocks.
-    encode_stored(&mut writer, &[], false)?;
+    write_stored(&mut writer, &[], false)?;
     Ok(writer.finish())
 }
 
 fn terminal_repeat(length: usize) -> ZbResult<Vec<u8>> {
-    let mut writer = BitWriter::new();
-    encode_fixed(&mut writer, &repeat_ops(length)?, false)?;
-    encode_stored(&mut writer, &[], false)?;
-    encode_stored(&mut writer, &[], true)?;
+    let mut writer = writer();
+    write_fixed(&mut writer, &repeat_ops(length)?, false)?;
+    write_stored(&mut writer, &[], false)?;
+    write_stored(&mut writer, &[], true)?;
     Ok(writer.finish())
 }
 

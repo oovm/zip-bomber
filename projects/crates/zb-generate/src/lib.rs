@@ -22,13 +22,20 @@ use zb_types::{
     ZbResult, ALL_VARIANTS,
 };
 
+/// Re-export the Acorn block primitives so callers share one dependency path.
+pub use acorn_codec::{
+    bit::{BitOrder, BitWriter},
+    compression::deflate::{
+        write_block, write_fixed_block, write_stored_block, DeflateBlock, DeflateBlockPlan,
+        FixedBlock, StoredBlock, Symbol,
+    },
+};
 pub use budget::TaskBudgetLedger;
 pub use budget_estimate::PlanBudgetEstimate;
 pub use crc::CrcPlan;
 pub use deflate::{
-    chain_repeats, decode_raw_deflate, encode_blocks, encode_blocks_with_finality,
-    encode_fixed_stream, encode_stored_block, encode_stored_stream, expand_skeleton,
-    validate_repeat, BitWriter, DeflateBlock, DeflatePlan, FixedOp, SkeletonOp,
+    chain_repeats, decode_raw_deflate, encode_fixed_stream, encode_stored_stream, expand_skeleton,
+    validate_repeat, DeflatePlan, SkeletonOp,
 };
 pub use emit::{emit_stored_archive, StoredMember};
 pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
@@ -40,8 +47,9 @@ pub use templates::{
 pub use variants::ArtifactBundle;
 pub use verify::{
     cycle_edges_from_graph, minimum_byte_period, verify_artifact_set,
-    verify_artifact_set_for_request, verify_artifact_set_with_limits, verify_artifact_set_with_spec,
-    verify_zip_bytes, verify_zip_bytes_with_limits, AcornZipCapability, VerificationReport,
+    verify_artifact_set_for_request, verify_artifact_set_with_limits,
+    verify_artifact_set_with_spec, verify_zip_bytes, verify_zip_bytes_with_limits,
+    AcornZipCapability, VerificationReport,
 };
 /// Re-export solver surface so generate callers share one dependency path.
 pub use zb_solver::{
@@ -211,7 +219,10 @@ pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
 }
 
 /// [`generate`] with cooperative cancel for Quine / Loopy CRC solve steps.
-pub fn generate_with_cancel(request: GenerateRequest, cancel: &CancelToken) -> Outcome<ArtifactSet> {
+pub fn generate_with_cancel(
+    request: GenerateRequest,
+    cancel: &CancelToken,
+) -> Outcome<ArtifactSet> {
     if let Err(err) = cancel.check() {
         let report = GenerateReport::failed(
             request.variant,

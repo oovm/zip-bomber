@@ -1,11 +1,17 @@
 //! Alternating two-state DEFLATE program, based on Van Mello and Audenaert.
 //! The output cursor, rather than encoded offsets, determines replay distances.
+use acorn_codec::{
+    bit::{BitOrder, BitWriter},
+    compression::deflate::Symbol,
+};
+
 use super::recursive::{aligned_repeat, header, stored};
-use crate::deflate::{chain_repeats, encode_fixed, encode_stored, BitWriter, FixedOp, SkeletonOp};
+use crate::deflate::{chain_repeats, write_fixed, write_stored, SkeletonOp};
 use zb_types::{ZbError, ZbResult};
+
 const R4: [u8; 5] = [0x42, 0x88, 0x21, 0xc4, 0x00];
 
-fn ops(length: usize, distance: usize) -> ZbResult<Vec<FixedOp>> {
+fn ops(length: usize, distance: usize) -> ZbResult<Vec<Symbol>> {
     if distance > 32768 || distance == 0 {
         return Err(ZbError::resource_limited(
             "loop copy exceeds DEFLATE window",
@@ -14,23 +20,30 @@ fn ops(length: usize, distance: usize) -> ZbResult<Vec<FixedOp>> {
     chain_repeats(length as u32, distance as u16)?
         .into_iter()
         .map(|op| match op {
-            SkeletonOp::Repeat { length, distance } => Ok(FixedOp::Repeat { length, distance }),
+            SkeletonOp::Repeat { length, distance } => Ok(Symbol::Match { length, distance }),
             _ => unreachable!(),
         })
         .collect()
 }
-fn aligned(operations: &[FixedOp]) -> ZbResult<Vec<u8>> {
-    let mut w = BitWriter::new();
-    encode_fixed(&mut w, operations, false)?;
-    encode_stored(&mut w, &[], false)?;
+
+fn writer() -> BitWriter {
+    BitWriter::new(BitOrder::LeastSignificantBitFirst)
+}
+
+fn aligned(operations: &[Symbol]) -> ZbResult<Vec<u8>> {
+    let mut w = writer();
+    write_fixed(&mut w, operations, false)?;
+    write_stored(&mut w, &[], false)?;
     Ok(w.finish())
 }
+
 /// Encoded alternating program and explicit quoted source/target locations.
 pub(crate) struct LoopStream {
     pub bytes: Vec<u8>,
     pub target_copy: usize,
     pub source_copy: usize,
 }
+
 /// Construct a stream in source that decodes into target plus its alternate stream.
 pub(crate) fn encode_loop(
     source: &[u8],
@@ -56,7 +69,7 @@ pub(crate) fn encode_loop(
     let source_copy = bytes.len() + 5;
     bytes.extend(stored(&b)?);
     let mut cursor = a.len() + b.len();
-    let mut initial = vec![FixedOp::Repeat {
+    let mut initial = vec![Symbol::Match {
         length: 5,
         distance: 5,
     }];
@@ -122,11 +135,11 @@ pub(crate) fn encode_loop(
         if distance > 32768 {
             break;
         }
-        let mut w = BitWriter::new();
-        encode_fixed(&mut w, &ops(width, width)?, false)?;
-        encode_fixed(&mut w, &ops(footer_len, distance)?, false)?;
-        encode_stored(&mut w, &[], false)?;
-        encode_stored(&mut w, &[], true)?;
+        let mut w = writer();
+        write_fixed(&mut w, &ops(width, width)?, false)?;
+        write_fixed(&mut w, &ops(footer_len, distance)?, false)?;
+        write_stored(&mut w, &[], false)?;
+        write_stored(&mut w, &[], true)?;
         let candidate = w.finish();
         if candidate.len() == width {
             tail = Some(candidate);
