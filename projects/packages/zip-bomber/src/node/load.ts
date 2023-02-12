@@ -5,11 +5,12 @@ import {
 } from "../facade.js";
 import {
     VARIANTS,
+    type ArtifactSet,
     type CapabilitySet,
     type GenerateRequest,
     type GraphSpec,
     type Outcome,
-    type ArtifactSet,
+    type PlanBudgetEstimate,
     type VariantId,
     type ZipBomberApi,
 } from "../types.js";
@@ -35,6 +36,7 @@ export type NativePlanResult = {
     summary?: string;
     profile?: string;
     reportJson: string;
+    budgetEstimateJson?: string;
     errorCategory?: string;
     errorCode?: string;
     errorMessage?: string;
@@ -93,6 +95,23 @@ type NativeBinding = {
         requestJson: string,
     ) => NativeVerifyResult;
 };
+
+/**
+ * Decode the plan budget estimate the native binding reports as JSON.
+ *
+ * The estimate travels as JSON so the Node and WASM backends stay byte-for-byte
+ * identical, exactly like the generate report.
+ */
+function parseBudgetEstimate(json?: string): PlanBudgetEstimate | undefined {
+    if (!json) {
+        return undefined;
+    }
+    try {
+        return JSON.parse(json) as PlanBudgetEstimate;
+    } catch {
+        return undefined;
+    }
+}
 
 function mapCapabilities(binding: NativeBinding): CapabilitySet | undefined {
     if (!binding.capabilitiesNapi) {
@@ -172,6 +191,7 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                       feasible: result.feasible,
                       summary: result.summary,
                       profile: result.profile,
+                      budgetEstimate: parseBudgetEstimate(result.budgetEstimateJson),
                       reportJson: result.reportJson,
                       errorCategory: result.errorCategory,
                       errorCode: result.errorCode,
@@ -202,6 +222,7 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                       feasible: result.feasible,
                       summary: result.summary,
                       profile: result.profile,
+                      budgetEstimate: parseBudgetEstimate(result.budgetEstimateJson),
                       reportJson: result.reportJson,
                       errorCategory: result.errorCategory,
                       errorCode: result.errorCode,

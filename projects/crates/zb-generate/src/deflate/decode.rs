@@ -1,6 +1,6 @@
 //! Raw DEFLATE decode through Acorn codec (verification and post-emit checks).
 
-use acorn_codec::{compression::RawDeflate, CodecLimits};
+use acorn_codec::{compression::Deflate, CodecLimits};
 use zb_types::{GenerateLimits, ZbError, ZbResult};
 
 use crate::budget::TaskBudgetLedger;
@@ -35,7 +35,7 @@ pub fn decode_raw_deflate_with_codec_limits(
     if input.is_empty() {
         return Ok(Vec::new());
     }
-    let facts = RawDeflate::decode(input, limits).map_err(|e| {
+    let facts = Deflate::decode(input, limits).map_err(|e| {
         ZbError::verification_failed(format!("raw deflate decode failed: {e}"))
     })?;
     if !facts.deflate_stream_complete(input.len()) {

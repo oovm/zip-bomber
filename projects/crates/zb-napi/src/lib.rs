@@ -116,6 +116,8 @@ pub struct PlanResponse {
     pub profile: Option<String>,
     /// Serialized generate report JSON.
     pub report_json: String,
+    /// Serialized `PlanBudgetEstimate` JSON when the plan produced one.
+    pub budget_estimate_json: Option<String>,
     /// Stable error category when failed.
     pub error_category: Option<String>,
     /// Stable error code when failed.
@@ -146,6 +148,13 @@ fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
         Outcome::Ok { value, report, .. } => {
             let report_json =
                 report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
+            let budget_estimate_json = match value.budget_estimate.as_ref() {
+                Some(estimate) => Some(
+                    serde_json::to_string(estimate)
+                        .map_err(|err| Error::from_reason(err.to_string()))?,
+                ),
+                None => None,
+            };
             Ok(PlanResponse {
                 exit_code: 0,
                 ok: true,
@@ -153,6 +162,7 @@ fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
                 summary: Some(value.summary),
                 profile: Some(value.profile),
                 report_json,
+                budget_estimate_json,
                 error_category: None,
                 error_code: None,
                 error_message: None,
@@ -173,6 +183,7 @@ fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
                 summary: None,
                 profile: None,
                 report_json,
+                budget_estimate_json: None,
                 error_category: Some(error.category.as_str().to_string()),
                 error_code: Some(error.code.as_str().to_string()),
                 error_message: Some(error.message),
