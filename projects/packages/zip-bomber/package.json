@@ -1,20 +1,30 @@
 {
     "name": "@sxo/zip-bomber",
-    "version": "0.0.1",
+    "version": "0.0.0",
     "description": "Generate recursive ZIP / zip-bomb variants (bomb, quine, loopy, fractal)",
-    "type": "module",
     "license": "MPL-2.0",
-    "bin": {
-        "zb": "bin/zip-bomber"
+    "author": "Aster <192607617@qq.com>",
+    "homepage": "https://github.com/oovm/zip-bomber/tree/dev/projects/packages/zip-bomber#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/oovm/zip-bomber.git",
+        "directory": "projects/packages/zip-bomber"
     },
-    "publishConfig": {
-        "access": "public"
+    "bugs": {
+        "url": "https://github.com/oovm/zip-bomber/issues"
     },
+    "type": "module",
     "exports": {
         ".": "./src/index.ts",
         "./node": "./src/node/index.ts",
         "./wasm": "./src/wasm/index.ts",
         "./cli": "./src/cli/index.ts"
+    },
+    "bin": {
+        "zb": "bin/zip-bomber"
+    },
+    "engines": {
+        "node": ">=20"
     },
     "files": [
         "bin",
@@ -22,9 +32,6 @@
         "readme.md",
         "src"
     ],
-    "engines": {
-        "node": ">=20"
-    },
     "scripts": {
         "typecheck": "tsc --noEmit",
         "test:e2e": "tsx --test tests/**/*.test.ts"
@@ -45,5 +52,8 @@
         "@types/node": "^22.13.10",
         "tsx": "^4.19.3",
         "typescript": "^5.8.3"
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }

@@ -1,14 +1,7 @@
 {
     "name": "@sxo/zip-bomber-skills",
-    "version": "0.0.1",
-    "type": "module",
+    "version": "0.0.0",
     "description": "Agent skills for zip-bomber. Recursive ZIP / zip-bomb variant generation with @sxo/zip-bomber.",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/notedge/zip-bomber.git",
-        "directory": "projects/packages/zip-bomber-skills"
-    },
-    "homepage": "https://github.com/notedge/zip-bomber/tree/dev/projects/packages/zip-bomber-skills",
     "keywords": [
         "zip-bomber",
         "zip-bomb",
@@ -18,17 +11,28 @@
         "agents"
     ],
     "license": "MPL-2.0",
+    "author": "Aster <192607617@qq.com>",
+    "homepage": "https://github.com/oovm/zip-bomber/tree/dev/projects/packages/zip-bomber-skills#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/oovm/zip-bomber.git",
+        "directory": "projects/packages/zip-bomber-skills"
+    },
+    "bugs": {
+        "url": "https://github.com/oovm/zip-bomber/issues"
+    },
+    "type": "module",
     "bin": {
         "zip-bomber-skills": "bin/zip-bomber-skills"
+    },
+    "engines": {
+        "node": ">=20"
     },
     "files": [
         "bin",
         "skills",
         "readme.md"
     ],
-    "engines": {
-        "node": ">=20"
-    },
     "publishConfig": {
         "access": "public"
     }

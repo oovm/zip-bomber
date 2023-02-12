@@ -23,11 +23,6 @@ dist/
 scripts/.placeholder-npm-cache.json
 .cache/npm-placeholder.json
 .env.placeholder.local
-projects/packages/panduck-unknown-wasm32/lib/
-projects/packages/zip-bomber-unknown-wasm32/lib/
-projects/packages/homepage/dist/
-projects/packages/homepage/public/
-projects/crates/zb-napi/index.d.ts
-projects/crates/zb-napi/index.js
+pnpm-lock.yaml
 *.wasm
 *.node

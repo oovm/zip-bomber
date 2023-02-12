@@ -1,11 +1,32 @@
 {
     "name": "@sxo/zip-bomber-unknown-wasm32",
-    "version": "0.0.1",
+    "version": "0.0.0",
     "description": "zip-bomber wasm-pack artifact for wasm32-unknown-unknown",
-    "type": "module",
     "license": "MPL-2.0",
+    "author": "Aster <192607617@qq.com>",
+    "homepage": "https://github.com/oovm/zip-bomber/tree/dev/projects/packages/zip-bomber-unknown-wasm32#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/oovm/zip-bomber.git",
+        "directory": "projects/packages/zip-bomber-unknown-wasm32"
+    },
+    "bugs": {
+        "url": "https://github.com/oovm/zip-bomber/issues"
+    },
+    "type": "module",
     "main": "./lib/zb_wasm.js",
     "types": "./lib/zb_wasm.d.ts",
-    "files": ["lib", "readme.md"],
-    "sideEffects": ["./lib/zb_wasm.js"]
+    "engines": {
+        "node": ">=20"
+    },
+    "files": [
+        "lib",
+        "readme.md"
+    ],
+    "sideEffects": [
+        "./lib/zb_wasm.js"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
 }
