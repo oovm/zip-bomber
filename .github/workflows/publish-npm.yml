@@ -1,6 +1,6 @@
 # Trusted Publisher contract (sole npm trusted workflow — keep this filename):
 #   file = publish-npm.yml
-#   repo = notedge/zip-bomber
+#   repo = oovm/zip-bomber
 #   env  = NPM_PUBLISH
 
 name: Publish npm
