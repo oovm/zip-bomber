@@ -1,0 +1,6 @@
+# npm falls back to .gitignore, which wasm-pack fills with `*`.
+# Keep the built payload publishable, but not the nested wasm-pack manifest:
+# this package ships its own manifest and entrypoint one level up.
+package.json
+README.md
+.gitignore
