@@ -17,6 +17,9 @@ jobs:
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+      - name: Checkout the sibling acorn.rs workspace
+        run: git clone --depth 1 --branch dev https://github.com/yggdrasil-language/acorn.rs ../acorn.rs
+
       - uses: dtolnay/rust-toolchain@nightly
       - name: Build workspace
         run: cargo build --release
