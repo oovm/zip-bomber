@@ -18,7 +18,7 @@ test("CLI maps actual files, names and directories; plan matches generation", as
     const output = join(dir, "different-output.zip");
     const content = Buffer.from("真实文件内容\n".repeat(100));
     writeFileSync(source, content);
-    const options = ["--variant", "quine", "--quine-name", "递归/again.zip",
+    const options = ["--variant", "quine", "--fixed-point", "递归/again.zip",
         "--attach", `assets/说明.txt=${source}`, "--directory", "assets", "--directory", "empty/"];
     const plan = run("--json", "plan", ...options);
     assert.equal(plan.status, 0, plan.stderr);
@@ -54,10 +54,10 @@ test("CLI maps actual files, names and directories; plan matches generation", as
     assert.deepEqual(readFileSync(source), content);
 });
 
-test("empty selfMemberPath is rejected rather than silently defaulted", async () => {
+test("empty fixedPoint is rejected rather than silently defaulted", async () => {
     const api = await createZipBomber();
     try {
-        const outcome = await api.zipQuine({ selfMemberPath: "" });
+        const outcome = await api.quine({ fixedPoint: "" });
         assert.equal(outcome.ok, false);
     } finally {
         await api.dispose();
@@ -68,7 +68,7 @@ test("Quine CLI options have English and Chinese command help", () => {
     for (const locale of ["en-US", "zh-CN"]) {
         const result = run("--locale", locale, "generate", "--help");
         assert.equal(result.status, 0, result.stderr);
-        assert.match(result.stdout, /--quine-name/);
+        assert.match(result.stdout, /--fixed-point/);
         assert.match(result.stdout, /--attach/);
         assert.match(result.stdout, /--directory/);
         assert.doesNotMatch(result.stdout, /\{\{zb\./);

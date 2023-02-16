@@ -20,11 +20,7 @@ pub struct QuineTemplateMeta {
 ///
 /// Unsupported profiles have no registered candidates.
 pub fn list_quine_templates(profile: &str) -> Vec<QuineTemplateMeta> {
-    QUINE_TEMPLATES
-        .iter()
-        .copied()
-        .filter(|t| t.profile == profile)
-        .collect()
+    QUINE_TEMPLATES.iter().copied().filter(|t| t.profile == profile).collect()
 }
 
 const QUINE_TEMPLATES: &[QuineTemplateMeta] = &[QuineTemplateMeta {

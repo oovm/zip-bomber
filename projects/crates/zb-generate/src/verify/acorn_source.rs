@@ -10,10 +10,7 @@ use zb_types::{ZbError, ZbResult};
 /// `read_range` with `len == 0` fails with unexpected EOF. Zero-length stored files
 /// and directory entries are returned per [`MemberDecodeFacts::decoded_size`] without
 /// calling `read_range(0, 0)`.
-pub(crate) fn materialize_decoded_bytes(
-    source: &MemorySource,
-    facts: &MemberDecodeFacts,
-) -> ZbResult<Vec<u8>> {
+pub(crate) fn materialize_decoded_bytes(source: &MemorySource, facts: &MemberDecodeFacts) -> ZbResult<Vec<u8>> {
     let len = facts.decoded_size;
     if len == 0 {
         return Ok(Vec::new());
@@ -38,17 +35,14 @@ mod tests {
 
     #[test]
     fn zero_length_stored_member_materializes_without_read_range() {
-        let archive = crate::emit::emit_stored_archive(&[crate::emit::StoredMember {
-            path: "empty/".into(),
-            payload: Vec::new(),
-        }])
-        .expect("emit");
+        let archive =
+            crate::emit::emit_stored_archive(&[crate::emit::StoredMember { path: "empty/".into(), payload: Vec::new() }])
+                .expect("emit");
         let index = acorn_zip::index_zip_bytes("test.zip", archive.clone()).expect("index");
         let member = &index.members[0];
         let budget = Budget::default();
         let (source, facts) =
-            decode_member_with_facts("test", MemorySource::from_bytes("test.zip", archive), member, &budget)
-                .expect("decode");
+            decode_member_with_facts("test", MemorySource::from_bytes("test.zip", archive), member, &budget).expect("decode");
         assert_eq!(facts.decoded_size, 0);
         let bytes = materialize_decoded_bytes(&source, &facts).expect("materialize");
         assert!(bytes.is_empty());

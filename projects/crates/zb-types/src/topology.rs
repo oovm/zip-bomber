@@ -67,11 +67,7 @@ pub struct AlignmentPolicy {
 
 impl Default for AlignmentPolicy {
     fn default() -> Self {
-        Self {
-            equal_headers: true,
-            equal_footers: true,
-            extra_budget: 32_763,
-        }
+        Self { equal_headers: true, equal_footers: true, extra_budget: 32_763 }
     }
 }
 
@@ -89,11 +85,7 @@ pub struct TopologyGraph {
 impl TopologyGraph {
     /// Empty graph with default alignment.
     pub fn empty() -> Self {
-        Self {
-            nodes: Vec::new(),
-            edges: Vec::new(),
-            alignment: AlignmentPolicy::default(),
-        }
+        Self { nodes: Vec::new(), edges: Vec::new(), alignment: AlignmentPolicy::default() }
     }
 
     /// Single-node self-loop suitable for a quine stub.
@@ -113,11 +105,7 @@ impl TopologyGraph {
     }
 
     /// Two-level nested bomb DAG: `root -- child_path --> child` (leaf auto-payload).
-    pub fn bomb_nest(
-        root: impl Into<String>,
-        child: impl Into<String>,
-        child_path: impl Into<String>,
-    ) -> Self {
+    pub fn bomb_nest(root: impl Into<String>, child: impl Into<String>, child_path: impl Into<String>) -> Self {
         let root = NodeId::new(root);
         let child = NodeId::new(child);
         Self {
@@ -152,13 +140,7 @@ impl TopologyGraph {
                     to: b.clone(),
                     role: EdgeRole::NestedArchive,
                 },
-                ArchiveEdge {
-                    id: None,
-                    from: b,
-                    member_path: b_member.into(),
-                    to: a,
-                    role: EdgeRole::NestedArchive,
-                },
+                ArchiveEdge { id: None, from: b, member_path: b_member.into(), to: a, role: EdgeRole::NestedArchive },
             ],
             alignment: AlignmentPolicy::default(),
         }

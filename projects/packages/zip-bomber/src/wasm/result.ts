@@ -59,7 +59,7 @@ export function cancelledWasmGenerateResult(): BackendGenerateResult {
         exitCode: 2,
         ok: false,
         reportJson: JSON.stringify({
-            schema: "zb.report/v1",
+            schema: "zb.report/v0",
             container: "zip",
             variant: "quine",
             status: "error",

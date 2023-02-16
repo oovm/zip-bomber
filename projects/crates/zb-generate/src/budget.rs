@@ -21,12 +21,7 @@ impl TaskBudgetLedger {
     pub fn new(limits: GenerateLimits) -> Self {
         let remaining_decoded = limits.max_decoded_bytes;
         let remaining_read = limits.max_live_memory_bytes;
-        Self {
-            limits,
-            remaining_decoded,
-            remaining_read,
-            members_decoded: 0,
-        }
+        Self { limits, remaining_decoded, remaining_read, members_decoded: 0 }
     }
 
     /// Ledger using the shared small-sample profile.
@@ -44,7 +39,7 @@ impl TaskBudgetLedger {
         self.remaining_read
     }
 
-    /// Snapshot charged usage for `zb.report/v2`.
+    /// Snapshot charged usage for `zb.report/v0`.
     pub fn usage(&self) -> BudgetUsage {
         BudgetUsage {
             max_decoded_bytes: self.limits.max_decoded_bytes,
@@ -66,27 +61,19 @@ impl TaskBudgetLedger {
             return Err(ZbError::resource_limited("member decode budget exhausted"));
         }
         if uncompressed_size > self.remaining_decoded {
-            return Err(ZbError::resource_limited(
-                "remaining max_decoded_bytes insufficient for member",
-            ));
+            return Err(ZbError::resource_limited("remaining max_decoded_bytes insufficient for member"));
         }
         let read_need = archive_len.max(compressed_size);
         if read_need > self.remaining_read {
-            return Err(ZbError::resource_limited(
-                "remaining live-memory read budget insufficient for member",
-            ));
+            return Err(ZbError::resource_limited("remaining live-memory read budget insufficient for member"));
         }
-        let cache_cap = self
-            .limits
-            .max_live_memory_bytes
-            .min(self.remaining_read)
-            .min(archive_len.saturating_mul(2).max(compressed_size));
+        let cache_cap =
+            self.limits.max_live_memory_bytes.min(self.remaining_read).min(archive_len.saturating_mul(2).max(compressed_size));
         Ok(Budget {
             max_read_bytes: read_need,
             max_decoded_bytes: uncompressed_size,
             max_envelope_depth: self.limits.max_depth,
-            max_container_members: (self.limits.max_members as u64)
-                .saturating_sub(self.members_decoded),
+            max_container_members: (self.limits.max_members as u64).saturating_sub(self.members_decoded),
             max_nodes: self.limits.max_nodes as u64,
             max_references: self.limits.max_edges as u64 * 4,
             max_pointer_hops: self.limits.max_depth as u64 * 8,
@@ -96,20 +83,12 @@ impl TaskBudgetLedger {
     }
 
     /// Record actual decode consumption for a member.
-    pub fn settle_member_decode(
-        &mut self,
-        decoded_size: u64,
-        read_bytes: u64,
-    ) -> ZbResult<()> {
+    pub fn settle_member_decode(&mut self, decoded_size: u64, read_bytes: u64) -> ZbResult<()> {
         if decoded_size > self.remaining_decoded {
-            return Err(ZbError::resource_limited(
-                "member decode exceeded remaining max_decoded_bytes",
-            ));
+            return Err(ZbError::resource_limited("member decode exceeded remaining max_decoded_bytes"));
         }
         if read_bytes > self.remaining_read {
-            return Err(ZbError::resource_limited(
-                "member read exceeded remaining live-memory budget",
-            ));
+            return Err(ZbError::resource_limited("member read exceeded remaining live-memory budget"));
         }
         self.remaining_decoded -= decoded_size;
         self.remaining_read -= read_bytes;
@@ -118,38 +97,24 @@ impl TaskBudgetLedger {
     }
 
     /// Reserve codec limits for a raw DEFLATE self-check.
-    pub fn reserve_raw_deflate(
-        &mut self,
-        input_len: u64,
-        max_output: u64,
-    ) -> ZbResult<CodecLimits> {
+    pub fn reserve_raw_deflate(&mut self, input_len: u64, max_output: u64) -> ZbResult<CodecLimits> {
         let output_cap = max_output.min(self.remaining_decoded);
         if max_output > 0 && output_cap == 0 {
-            return Err(ZbError::resource_limited(
-                "remaining max_decoded_bytes insufficient for raw deflate",
-            ));
+            return Err(ZbError::resource_limited("remaining max_decoded_bytes insufficient for raw deflate"));
         }
         if input_len > self.remaining_read {
-            return Err(ZbError::resource_limited(
-                "remaining read budget insufficient for raw deflate input",
-            ));
+            return Err(ZbError::resource_limited("remaining read budget insufficient for raw deflate input"));
         }
-        Ok(CodecLimits::new()
-            .with_max_input_bytes(input_len)
-            .with_max_output_bytes(output_cap))
+        Ok(CodecLimits::new().with_max_input_bytes(input_len).with_max_output_bytes(output_cap))
     }
 
     /// Record raw DEFLATE decode consumption.
     pub fn settle_raw_deflate(&mut self, decoded_size: u64, input_len: u64) -> ZbResult<()> {
         if decoded_size > self.remaining_decoded {
-            return Err(ZbError::resource_limited(
-                "raw deflate exceeded remaining max_decoded_bytes",
-            ));
+            return Err(ZbError::resource_limited("raw deflate exceeded remaining max_decoded_bytes"));
         }
         if input_len > self.remaining_read {
-            return Err(ZbError::resource_limited(
-                "raw deflate exceeded remaining read budget",
-            ));
+            return Err(ZbError::resource_limited("raw deflate exceeded remaining read budget"));
         }
         self.remaining_decoded -= decoded_size;
         self.remaining_read -= input_len;
@@ -171,23 +136,13 @@ mod tests {
             ..GenerateLimits::small_sample()
         };
         let mut ledger = TaskBudgetLedger::new(limits);
-        let budget = ledger
-            .reserve_member_decode(50, 40, 60)
-            .expect("first member fits");
+        let budget = ledger.reserve_member_decode(50, 40, 60).expect("first member fits");
         assert_eq!(budget.max_decoded_bytes, 60);
-        ledger
-            .settle_member_decode(60, 40)
-            .expect("first member settles");
+        ledger.settle_member_decode(60, 40).expect("first member settles");
         assert_eq!(ledger.remaining_decoded(), 40);
-        ledger
-            .reserve_member_decode(50, 30, 30)
-            .expect("second member fits");
-        ledger
-            .settle_member_decode(30, 30)
-            .expect("second member settles");
-        let err = ledger
-            .reserve_member_decode(50, 10, 10)
-            .expect_err("third member exceeds max_members");
+        ledger.reserve_member_decode(50, 30, 30).expect("second member fits");
+        ledger.settle_member_decode(30, 30).expect("second member settles");
+        let err = ledger.reserve_member_decode(50, 10, 10).expect_err("third member exceeds max_members");
         assert_eq!(err.code, ErrorCode::ResourceLimited);
     }
 
@@ -201,44 +156,26 @@ mod tests {
         };
         let mut ledger = TaskBudgetLedger::new(limits);
         for _ in 0..100 {
-            let budget = ledger
-                .reserve_member_decode(2048, 512, 1024)
-                .expect("member fits under shared ledger");
+            let budget = ledger.reserve_member_decode(2048, 512, 1024).expect("member fits under shared ledger");
             assert_eq!(budget.max_decoded_bytes, 1024);
             assert!(budget.max_decoded_bytes < 64 * 1024 * 1024);
-            ledger
-                .settle_member_decode(1024, 512)
-                .expect("member settles");
+            ledger.settle_member_decode(1024, 512).expect("member settles");
         }
         assert_eq!(ledger.usage().members_decoded, 100);
     }
 
     #[test]
     fn raw_deflate_respects_remaining_decode_quota() {
-        let limits = GenerateLimits {
-            max_decoded_bytes: 32,
-            max_live_memory_bytes: 64,
-            ..GenerateLimits::small_sample()
-        };
+        let limits = GenerateLimits { max_decoded_bytes: 32, max_live_memory_bytes: 64, ..GenerateLimits::small_sample() };
         let mut ledger = TaskBudgetLedger::new(limits);
-        let codec = ledger
-            .reserve_raw_deflate(16, 24)
-            .expect("first deflate fits");
+        let codec = ledger.reserve_raw_deflate(16, 24).expect("first deflate fits");
         assert_eq!(codec.max_output_bytes, Some(24));
-        ledger
-            .settle_raw_deflate(24, 16)
-            .expect("first deflate settles");
+        ledger.settle_raw_deflate(24, 16).expect("first deflate settles");
         assert_eq!(ledger.remaining_decoded(), 8);
-        let capped = ledger
-            .reserve_raw_deflate(8, 16)
-            .expect("second deflate is capped to remaining quota");
+        let capped = ledger.reserve_raw_deflate(8, 16).expect("second deflate is capped to remaining quota");
         assert_eq!(capped.max_output_bytes, Some(8));
-        ledger
-            .settle_raw_deflate(8, 8)
-            .expect("second deflate settles");
-        let err = ledger
-            .reserve_raw_deflate(4, 4)
-            .expect_err("third deflate exceeds exhausted decode quota");
+        ledger.settle_raw_deflate(8, 8).expect("second deflate settles");
+        let err = ledger.reserve_raw_deflate(4, 4).expect_err("third deflate exceeds exhausted decode quota");
         assert_eq!(err.code, ErrorCode::ResourceLimited);
     }
 }

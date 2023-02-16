@@ -37,7 +37,7 @@ function localFromCd(archive: Buffer, name: string): number {
     return -1;
 }
 
-test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
+test("CLI zb.job/v0 plans and publishes a two-node Loopy directory", () => {
     const dir = fileURLToPath(new URL(`../../../../target/job-cli-${randomUUID()}/`, import.meta.url));
     mkdirSync(dir, { recursive: true });
     const alphaTxt = join(dir, "alpha.txt");
@@ -46,7 +46,7 @@ test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
     writeFileSync(betaTxt, "job-beta\n");
     const jobPath = join(dir, "loop.job.json");
     writeFileSync(jobPath, JSON.stringify({
-        schema: "zb.job/v1",
+        schema: "zb.job/v0",
         container: "zip",
         variant: "loopy",
         graph: {
@@ -91,7 +91,7 @@ test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
     assert.ok(report.loopy);
     assert.equal(report.loopy.requested_nodes, 2);
     assert.equal(report.loopy.byte_period, 2);
-    assert.equal(report.loopy.profile, "zip.loopy-two-node.gapped/v1");
+    assert.equal(report.loopy.profile, "zip.loopy-two-node.gapped/v0");
     assert.equal(report.loopy.edges.length, 2);
     assert.ok(report.loopy.edges.every((edge: { bytes_equal: boolean }) => edge.bytes_equal));
 
@@ -122,17 +122,17 @@ test("CLI zb.job/v1 plans and publishes a two-node Loopy directory", () => {
     assert.equal(mixed.status, 1);
 });
 
-test("CLI zb.job/v1 publishes a Quine with directoryEntry input", () => {
+test("CLI zb.job/v0 publishes a Quine with directoryEntry input", () => {
     const dir = fileURLToPath(new URL(`../../../../target/job-quine-${randomUUID()}/`, import.meta.url));
     mkdirSync(dir, { recursive: true });
     const source = join(dir, "note.txt");
     writeFileSync(source, "job-quine\n");
     const jobPath = join(dir, "quine.job.json");
     writeFileSync(jobPath, JSON.stringify({
-        schema: "zb.job/v1",
+        schema: "zb.job/v0",
         container: "zip",
         variant: "quine",
-        selfMemberPath: "recurse/again.zip",
+        fixedPoint: "recurse/again.zip",
         inputs: [
             { node: 0, archivePath: "note.txt", source: { file: "note.txt" } },
             { node: 0, archivePath: "empty/", source: { directoryEntry: true } },

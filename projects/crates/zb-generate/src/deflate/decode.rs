@@ -1,6 +1,6 @@
 //! Raw DEFLATE decode through Acorn codec (verification and post-emit checks).
 
-use acorn_codec::{compression::Deflate, CodecLimits};
+use acorn_codec::{CodecLimits, compression::Deflate};
 use zb_types::{GenerateLimits, ZbError, ZbResult};
 
 use crate::budget::TaskBudgetLedger;
@@ -14,11 +14,7 @@ pub fn decode_raw_deflate(input: &[u8], max_output: u64) -> ZbResult<Vec<u8>> {
 }
 
 /// Decode using an explicit task ledger (shared verify / generate budget).
-pub fn decode_raw_deflate_with_ledger(
-    input: &[u8],
-    max_output: u64,
-    ledger: &mut TaskBudgetLedger,
-) -> ZbResult<Vec<u8>> {
+pub fn decode_raw_deflate_with_ledger(input: &[u8], max_output: u64, ledger: &mut TaskBudgetLedger) -> ZbResult<Vec<u8>> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
@@ -35,24 +31,17 @@ pub fn decode_raw_deflate_with_codec_limits(
     if input.is_empty() {
         return Ok(Vec::new());
     }
-    let facts = Deflate::decode(input, limits).map_err(|e| {
-        ZbError::verification_failed(format!("raw deflate decode failed: {e}"))
-    })?;
+    let facts =
+        Deflate::decode(input, limits).map_err(|e| ZbError::verification_failed(format!("raw deflate decode failed: {e}")))?;
     if !facts.deflate_stream_complete(input.len()) {
-        return Err(ZbError::verification_failed(
-            "raw deflate decoder did not consume the complete stream",
-        ));
+        return Err(ZbError::verification_failed("raw deflate decoder did not consume the complete stream"));
     }
     ledger.settle_raw_deflate(facts.output_produced as u64, input.len() as u64)?;
     Ok(facts.value)
 }
 
 /// Decode using explicit task limits (convenience for tests).
-pub fn decode_raw_deflate_with_limits(
-    input: &[u8],
-    max_output: u64,
-    limits: &GenerateLimits,
-) -> ZbResult<Vec<u8>> {
+pub fn decode_raw_deflate_with_limits(input: &[u8], max_output: u64, limits: &GenerateLimits) -> ZbResult<Vec<u8>> {
     let mut ledger = TaskBudgetLedger::new(limits.clone());
     decode_raw_deflate_with_ledger(input, max_output, &mut ledger)
 }

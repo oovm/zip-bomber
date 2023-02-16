@@ -4,8 +4,10 @@
 //! Solvers poll at equation / pivot boundaries. Synchronous native calls still
 //! only observe cancellation at those checkpoints until a Worker owns the task.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use zb_types::{ZbError, ZbResult};
 
@@ -18,9 +20,7 @@ pub struct CancelToken {
 impl CancelToken {
     /// Fresh token that is not cancelled.
     pub fn new() -> Self {
-        Self {
-            flag: Arc::new(AtomicBool::new(false)),
-        }
+        Self { flag: Arc::new(AtomicBool::new(false)) }
     }
 
     /// Request cancellation. Idempotent and thread-safe.
@@ -35,11 +35,7 @@ impl CancelToken {
 
     /// Return [`ZbError`] with category `cancelled` when the flag is set.
     pub fn check(&self) -> ZbResult<()> {
-        if self.is_cancelled() {
-            Err(ZbError::cancelled("solver cancelled"))
-        } else {
-            Ok(())
-        }
+        if self.is_cancelled() { Err(ZbError::cancelled("solver cancelled")) } else { Ok(()) }
     }
 }
 

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createZipLoopy } from "../src/builders.js";
+import { createLoopy } from "../src/builders.js";
 import { createZipBomber as createNode, loadZipBomberNode } from "../src/node/index.js";
 import { createZipBomber as createWasm } from "../src/wasm/index.js";
 
 test("Node and WASM verify Loopy edges and byte period from the request", async () => {
     assert.ok(loadZipBomberNode().generateVariant, "build native binding before backend tests");
-    const built = createZipLoopy();
+    const built = createLoopy();
     const a = built.node({
         payloads: [{ archivePath: "readme.txt", bytes: new TextEncoder().encode("cycle-a\n") }],
     });
@@ -23,8 +23,8 @@ test("Node and WASM verify Loopy edges and byte period from the request", async 
     const node = await createNode();
     const wasm = await createWasm();
     try {
-        const nativeGen = await node.zipLoopy(spec.value);
-        const wasmGen = await wasm.zipLoopy(spec.value);
+        const nativeGen = await node.loopy(spec.value);
+        const wasmGen = await wasm.loopy(spec.value);
         assert.ok(nativeGen.ok, JSON.stringify(nativeGen));
         assert.ok(wasmGen.ok, JSON.stringify(wasmGen));
         if (!nativeGen.ok || !wasmGen.ok) return;
@@ -77,7 +77,7 @@ test("Node and WASM verify Loopy edges and byte period from the request", async 
 
 test("wrong expected period surfaces period_mismatch on Node", async () => {
     assert.ok(loadZipBomberNode().generateVariant, "build native binding before backend tests");
-    const built = createZipLoopy();
+    const built = createLoopy();
     const a = built.node({
         payloads: [{ archivePath: "a.txt", bytes: new TextEncoder().encode("pa") }],
     });
@@ -92,7 +92,7 @@ test("wrong expected period surfaces period_mismatch on Node", async () => {
     if (!spec.ok) return;
     const api = await createNode();
     try {
-        const generated = await api.zipLoopy(spec.value);
+        const generated = await api.loopy(spec.value);
         assert.ok(generated.ok);
         if (!generated.ok) return;
         const out = await api.verify(generated.value, {

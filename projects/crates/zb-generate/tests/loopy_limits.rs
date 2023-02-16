@@ -1,12 +1,12 @@
 use zb_generate::{generate, plan_generate};
-use zb_types::{generate_request_from_json, ErrorCode, Outcome};
+use zb_types::{ErrorCode, Outcome, generate_request_from_json};
 
 fn loopy_with_payload(bytes_b64: &str) -> zb_types::GenerateRequest {
     generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":[
                 {"members":[
                     {"kind":"payload","path":"big.bin","bytes":bytes_b64},
@@ -25,11 +25,7 @@ fn loopy_with_payload(bytes_b64: &str) -> zb_types::GenerateRequest {
 
 fn assert_quote_window(error: &zb_types::ZbError) {
     assert_eq!(error.code, ErrorCode::ResourceLimited);
-    assert!(
-        error.message.contains("quote layout") || error.message.contains("window"),
-        "{}",
-        error.message
-    );
+    assert!(error.message.contains("quote layout") || error.message.contains("window"), "{}", error.message);
 }
 
 #[test]
@@ -63,7 +59,8 @@ fn quote_and_tail_width_boundary_is_tight() {
         let mid = (lo + hi) / 2;
         if plan_ok(mid) {
             lo = mid;
-        } else {
+        }
+        else {
             hi = mid;
         }
     }
@@ -75,13 +72,7 @@ fn quote_and_tail_width_boundary_is_tight() {
     }
     match plan_generate(loopy_with_payload(&zb_types::encode_base64(&vec![0u8; lo + 1]))) {
         Outcome::Err { error, .. } => {
-            assert!(
-                matches!(
-                    error.code,
-                    ErrorCode::ResourceLimited | ErrorCode::SearchExhausted
-                ),
-                "{error:?}"
-            );
+            assert!(matches!(error.code, ErrorCode::ResourceLimited | ErrorCode::SearchExhausted), "{error:?}");
         }
         other => panic!("expected layout failure, got {other:?}"),
     }
@@ -94,22 +85,14 @@ fn low_decode_budget_rejects_two_node_layout() {
     match plan_generate(request.clone()) {
         Outcome::Err { error, .. } => {
             assert_eq!(error.code, ErrorCode::ResourceLimited);
-            assert!(
-                error.message.contains("budget") || error.message.contains("layout"),
-                "{}",
-                error.message
-            );
+            assert!(error.message.contains("budget") || error.message.contains("layout"), "{}", error.message);
         }
         other => panic!("plan expected resource_limited, got {other:?}"),
     }
     match generate(request) {
         Outcome::Err { error, .. } => {
             assert_eq!(error.code, ErrorCode::ResourceLimited);
-            assert!(
-                error.message.contains("budget") || error.message.contains("layout"),
-                "{}",
-                error.message
-            );
+            assert!(error.message.contains("budget") || error.message.contains("layout"), "{}", error.message);
         }
         other => panic!("generate expected resource_limited, got {other:?}"),
     }

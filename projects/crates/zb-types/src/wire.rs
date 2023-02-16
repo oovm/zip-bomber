@@ -3,10 +3,9 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    format_decimal_u64, parse_decimal_u64, zip_layout, AlignmentPolicy, ArchiveEdge, Artifact,
-    ArtifactId, ArtifactSet, ContainerKind, CrcStrategy, FractalSpec, GenerateLimits,
-    GenerateRequest, NodeId, PayloadSpec, TopologyGraph, VariantKind, ZbError, ZbResult,
-    REQUEST_SCHEMA_V2, ZIP_PROFILE_V0,
+    AlignmentPolicy, ArchiveEdge, Artifact, ArtifactId, ArtifactSet, ContainerKind, CrcStrategy, FractalSpec, GenerateLimits,
+    GenerateRequest, NodeId, PayloadSpec, REQUEST_SCHEMA, TopologyGraph, VariantKind, ZIP_PROFILE_V0, ZbError, ZbResult,
+    format_decimal_u64, parse_decimal_u64, zip_layout,
 };
 
 /// Wire payload: archive path plus base64 or raw byte array.
@@ -62,7 +61,7 @@ pub struct WireTopologyGraph {
 /// Partial generate request accepted from TS / CLI JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireGenerateRequest {
-    /// Schema id. Defaults to [`REQUEST_SCHEMA_V2`].
+    /// Schema id. Defaults to [`REQUEST_SCHEMA`].
     #[serde(default = "default_schema")]
     pub schema: String,
     /// Container id. Defaults to `zip`.
@@ -77,8 +76,8 @@ pub struct WireGenerateRequest {
     #[serde(default)]
     pub topology: Option<WireTopologyGraph>,
     /// Convenience self-member path for Quine (maps onto the sole self-loop edge).
-    #[serde(default, alias = "selfMemberPath", alias = "self_member_path")]
-    pub self_member_path: Option<String>,
+    #[serde(default, alias = "fixedPoint", alias = "fixed_point")]
+    pub fixed_point: Option<String>,
     /// Ordinary payloads / directory entries.
     #[serde(default)]
     pub payloads: Vec<WirePayloadSpec>,
@@ -273,7 +272,7 @@ where
 }
 
 fn default_schema() -> String {
-    REQUEST_SCHEMA_V2.to_string()
+    REQUEST_SCHEMA.to_string()
 }
 
 fn default_container() -> String {
@@ -286,35 +285,24 @@ fn default_profile() -> String {
 
 /// Decode a wire JSON generate request into the core contract.
 pub fn generate_request_from_json(json: &str) -> ZbResult<GenerateRequest> {
-    let wire: WireGenerateRequest = serde_json::from_str(json).map_err(|err| {
-        ZbError::new(
-            crate::ErrorCode::InvalidTopology,
-            format!("invalid generate request JSON: {err}"),
-        )
-    })?;
+    let wire: WireGenerateRequest = serde_json::from_str(json)
+        .map_err(|err| ZbError::new(crate::ErrorCode::InvalidTopology, format!("invalid generate request JSON: {err}")))?;
     wire.into_request()
 }
 
 impl WireGenerateRequest {
     /// Convert wire DTO into [`GenerateRequest`].
     pub fn into_request(self) -> ZbResult<GenerateRequest> {
-        let variant = VariantKind::parse(&self.variant).ok_or_else(|| {
-            ZbError::new(
-                crate::ErrorCode::UnknownVariant,
-                format!("unknown variant `{}`", self.variant),
-            )
-        })?;
-        if self.schema != REQUEST_SCHEMA_V2 {
+        let variant = VariantKind::parse(&self.variant)
+            .ok_or_else(|| ZbError::new(crate::ErrorCode::UnknownVariant, format!("unknown variant `{}`", self.variant)))?;
+        if self.schema != REQUEST_SCHEMA {
             return Err(ZbError::new(
                 crate::ErrorCode::InvalidTopology,
                 format!("unsupported request schema `{}`", self.schema),
             ));
         }
         if self.container != ContainerKind::Zip.as_str() {
-            return Err(ZbError::new(
-                crate::ErrorCode::InvalidTopology,
-                format!("unsupported container `{}`", self.container),
-            ));
+            return Err(ZbError::new(crate::ErrorCode::InvalidTopology, format!("unsupported container `{}`", self.container)));
         }
 
         let mut request = GenerateRequest::bare(variant);
@@ -328,7 +316,8 @@ impl WireGenerateRequest {
         }
         if let Some(extra) = self.extra_budget {
             request.extra_budget = extra;
-        } else {
+        }
+        else {
             request.extra_budget = zip_layout::EXTRA_BUDGET_DEFAULT;
         }
         request.fractal = self.fractal.or(request.fractal);
@@ -336,27 +325,15 @@ impl WireGenerateRequest {
         if let Some(topo) = self.topology {
             request.topology = topo.into_topology()?;
         }
-        if let Some(path) = self.self_member_path {
+        if let Some(path) = self.fixed_point {
             if variant != VariantKind::Quine {
-                return Err(ZbError::new(
-                    crate::ErrorCode::InvalidTopology,
-                    "selfMemberPath is only valid for the quine variant",
-                ));
+                return Err(ZbError::new(crate::ErrorCode::InvalidTopology, "fixedPoint is only valid for the quine variant"));
             }
-            let root = request
-                .topology
-                .nodes
-                .first()
-                .cloned()
-                .unwrap_or_else(|| NodeId::new("a.zip"));
+            let root = request.topology.nodes.first().cloned().unwrap_or_else(|| NodeId::new("a.zip"));
             request.topology = TopologyGraph::quine_self(root.0, path);
         }
 
-        request.payloads = self
-            .payloads
-            .into_iter()
-            .map(WirePayloadSpec::into_payload)
-            .collect::<ZbResult<Vec<_>>>()?;
+        request.payloads = self.payloads.into_iter().map(WirePayloadSpec::into_payload).collect::<ZbResult<Vec<_>>>()?;
         Ok(request)
     }
 }
@@ -370,7 +347,8 @@ impl WirePayloadSpec {
             (None, None) => {
                 if self.path.ends_with('/') {
                     Vec::new()
-                } else {
+                }
+                else {
                     return Err(ZbError::new(
                         crate::ErrorCode::InvalidTopology,
                         format!("payload `{}` requires bytes or bytesBase64", self.path),
@@ -378,10 +356,7 @@ impl WirePayloadSpec {
                 }
             }
         };
-        Ok(PayloadSpec {
-            path: self.path,
-            bytes,
-        })
+        Ok(PayloadSpec { path: self.path, bytes })
     }
 }
 
@@ -395,12 +370,7 @@ impl WireTopologyGraph {
                 "self_reference" => crate::EdgeRole::SelfReference,
                 "payload" => crate::EdgeRole::Payload,
                 "fractal_role" => crate::EdgeRole::FractalRole,
-                other => {
-                    return Err(ZbError::new(
-                        crate::ErrorCode::InvalidTopology,
-                        format!("unknown edge role `{other}`"),
-                    ))
-                }
+                other => return Err(ZbError::new(crate::ErrorCode::InvalidTopology, format!("unknown edge role `{other}`"))),
             };
             edges.push(ArchiveEdge {
                 id: edge.id,
@@ -410,11 +380,7 @@ impl WireTopologyGraph {
                 role,
             });
         }
-        Ok(TopologyGraph {
-            nodes,
-            edges,
-            alignment: self.alignment.unwrap_or_default(),
-        })
+        Ok(TopologyGraph { nodes, edges, alignment: self.alignment.unwrap_or_default() })
     }
 }
 
@@ -464,16 +430,8 @@ pub fn encode_base64(bytes: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            TABLE[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            TABLE[(n & 63) as usize] as char
-        } else {
-            '='
-        });
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
     }
     out
 }
@@ -501,15 +459,11 @@ pub fn generate_request_to_json(request: &GenerateRequest) -> ZbResult<String> {
             alignment: Some(request.topology.alignment.clone()),
         }),
         graph: request.graph.clone(),
-        self_member_path: None,
+        fixed_point: None,
         payloads: request
             .payloads
             .iter()
-            .map(|p| WirePayloadSpec {
-                path: p.path.clone(),
-                bytes: None,
-                bytes_base64: Some(encode_base64(&p.bytes)),
-            })
+            .map(|p| WirePayloadSpec { path: p.path.clone(), bytes: None, bytes_base64: Some(encode_base64(&p.bytes)) })
             .collect(),
         fractal: request.fractal.clone(),
         profile: request.profile.clone(),
@@ -517,12 +471,8 @@ pub fn generate_request_to_json(request: &GenerateRequest) -> ZbResult<String> {
         crc_strategy: Some(request.crc_strategy),
         extra_budget: Some(request.extra_budget),
     };
-    serde_json::to_string(&wire).map_err(|err| {
-        ZbError::new(
-            crate::ErrorCode::Internal,
-            format!("failed to serialize wire request: {err}"),
-        )
-    })
+    serde_json::to_string(&wire)
+        .map_err(|err| ZbError::new(crate::ErrorCode::Internal, format!("failed to serialize wire request: {err}")))
 }
 
 /// Wire artifact with base64 bytes.
@@ -583,9 +533,7 @@ impl WireArtifactSet {
         let mut artifacts = Vec::with_capacity(self.artifacts.len());
         for item in self.artifacts {
             let bytes = decode_base64(&item.bytes_base64)?;
-            let byte_length = item
-                .byte_length
-                .unwrap_or_else(|| bytes.len().to_string());
+            let byte_length = item.byte_length.unwrap_or_else(|| bytes.len().to_string());
             artifacts.push(Artifact {
                 id: ArtifactId::new(item.id),
                 container: ContainerKind::Zip,
@@ -594,51 +542,31 @@ impl WireArtifactSet {
                 digest: item.digest.unwrap_or_default(),
             });
         }
-        Ok(ArtifactSet {
-            root: ArtifactId::new(self.root),
-            artifacts,
-            logical_node_map: self.logical_node_map,
-        })
+        Ok(ArtifactSet { root: ArtifactId::new(self.root), artifacts, logical_node_map: self.logical_node_map })
     }
 }
 
 /// Serialize an artifact set for isomorphic verify.
 pub fn artifact_set_to_json(set: &ArtifactSet) -> ZbResult<String> {
-    serde_json::to_string(&WireArtifactSet::from_set(set)).map_err(|err| {
-        ZbError::new(
-            crate::ErrorCode::Internal,
-            format!("failed to serialize artifact set: {err}"),
-        )
-    })
+    serde_json::to_string(&WireArtifactSet::from_set(set))
+        .map_err(|err| ZbError::new(crate::ErrorCode::Internal, format!("failed to serialize artifact set: {err}")))
 }
 
 /// Parse an artifact set from isomorphic JSON.
 pub fn artifact_set_from_json(json: &str) -> ZbResult<ArtifactSet> {
-    let wire: WireArtifactSet = serde_json::from_str(json).map_err(|err| {
-        ZbError::new(
-            crate::ErrorCode::InvalidTopology,
-            format!("invalid artifact set JSON: {err}"),
-        )
-    })?;
+    let wire: WireArtifactSet = serde_json::from_str(json)
+        .map_err(|err| ZbError::new(crate::ErrorCode::InvalidTopology, format!("invalid artifact set JSON: {err}")))?;
     wire.into_set()
 }
 
 /// Parse a [`crate::VerificationSpec`] from isomorphic JSON.
 pub fn verification_spec_from_json(json: &str) -> ZbResult<crate::VerificationSpec> {
-    serde_json::from_str(json).map_err(|err| {
-        ZbError::new(
-            crate::ErrorCode::InvalidTopology,
-            format!("invalid verification spec JSON: {err}"),
-        )
-    })
+    serde_json::from_str(json)
+        .map_err(|err| ZbError::new(crate::ErrorCode::InvalidTopology, format!("invalid verification spec JSON: {err}")))
 }
 
 /// Serialize a [`crate::VerificationSpec`] for isomorphic verify.
 pub fn verification_spec_to_json(spec: &crate::VerificationSpec) -> ZbResult<String> {
-    serde_json::to_string(spec).map_err(|err| {
-        ZbError::new(
-            crate::ErrorCode::Internal,
-            format!("failed to serialize verification spec: {err}"),
-        )
-    })
+    serde_json::to_string(spec)
+        .map_err(|err| ZbError::new(crate::ErrorCode::Internal, format!("failed to serialize verification spec: {err}")))
 }

@@ -1,13 +1,12 @@
-//! `zb.report/v1` (template stubs) and `zb.report/v2` (successful emits).
+//! The `zb.report/v0` document shared by template stubs, successes, and errors.
 
 use serde::{Deserialize, Serialize};
 
 use crate::{ContainerKind, CrcStrategy, VariantKind};
 
-/// Legacy template report schema (stubs / not_implemented / early errors).
-pub const REPORT_SCHEMA_V1: &str = "zb.report/v1";
-/// Frozen success-path report schema (Living `03` / `04` minimal v2).
-pub const REPORT_SCHEMA_V2: &str = "zb.report/v2";
+/// Report schema id. There is one schema: nothing has been released, so the
+/// stub and success paths share one id instead of a legacy/frozen pair.
+pub const REPORT_SCHEMA: &str = "zb.report/v0";
 
 /// Task-level budget consumption after generate / verify (Living `13` §5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,7 +105,7 @@ impl ReportStatus {
 /// Structured generation report shared by CLI / N-API / WASM.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerateReport {
-    /// Schema id (`zb.report/v2` on successful emits; `v1` for stubs).
+    /// Schema id ([`REPORT_SCHEMA`]).
     pub schema: String,
     /// Container.
     pub container: ContainerKind,
@@ -148,14 +147,9 @@ pub struct GenerateReport {
 
 impl GenerateReport {
     /// Build a `not_implemented` stub report for a variant.
-    pub fn not_implemented(
-        variant: VariantKind,
-        crc: CrcStrategy,
-        nodes: usize,
-        edges: usize,
-    ) -> Self {
+    pub fn not_implemented(variant: VariantKind, crc: CrcStrategy, nodes: usize, edges: usize) -> Self {
         Self {
-            schema: REPORT_SCHEMA_V1.to_string(),
+            schema: REPORT_SCHEMA.to_string(),
             container: ContainerKind::Zip,
             variant,
             status: ReportStatus::NotImplemented,
@@ -166,20 +160,16 @@ impl GenerateReport {
             archive_bytes: None,
             declared_uncompressed: None,
             crc_strategy: crc.as_str().to_string(),
-            warnings: vec![format!(
-                "variant `{variant}` generator is not implemented yet"
-            )],
+            warnings: vec![format!("variant `{variant}` generator is not implemented yet")],
             error_code: Some("ZB_NOT_IMPLEMENTED".to_string()),
-            error_message: Some(format!(
-                "variant `{variant}` is recognized but not implemented"
-            )),
+            error_message: Some(format!("variant `{variant}` is recognized but not implemented")),
             solver: None,
             loopy: None,
             budget_usage: None,
         }
     }
 
-    /// Successful emit report (`zb.report/v2`).
+    /// Successful emit report (`zb.report/v0` with the full fact set).
     pub fn ok(
         variant: VariantKind,
         crc: CrcStrategy,
@@ -190,7 +180,7 @@ impl GenerateReport {
         warnings: Vec<String>,
     ) -> Self {
         Self {
-            schema: REPORT_SCHEMA_V2.to_string(),
+            schema: REPORT_SCHEMA.to_string(),
             container: ContainerKind::Zip,
             variant,
             status: ReportStatus::Ok,
@@ -211,15 +201,9 @@ impl GenerateReport {
     }
 
     /// Failed emit report carrying the structured error.
-    pub fn failed(
-        variant: VariantKind,
-        crc: CrcStrategy,
-        nodes: usize,
-        edges: usize,
-        err: &crate::ZbError,
-    ) -> Self {
+    pub fn failed(variant: VariantKind, crc: CrcStrategy, nodes: usize, edges: usize, err: &crate::ZbError) -> Self {
         Self {
-            schema: REPORT_SCHEMA_V1.to_string(),
+            schema: REPORT_SCHEMA.to_string(),
             container: ContainerKind::Zip,
             variant,
             status: ReportStatus::Error,

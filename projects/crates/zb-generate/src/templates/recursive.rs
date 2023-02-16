@@ -9,7 +9,7 @@ use acorn_codec::{
 };
 use zb_types::{ErrorCode, ZbError, ZbResult};
 
-use crate::deflate::{chain_repeats, write_fixed, write_stored, SkeletonOp};
+use crate::deflate::{SkeletonOp, chain_repeats, write_fixed, write_stored};
 
 const R4: [u8; 5] = [0x42, 0x88, 0x21, 0xc4, 0x00];
 
@@ -21,8 +21,7 @@ pub(crate) struct RecursiveStream {
 }
 
 pub(crate) fn header(length: usize, final_block: bool) -> ZbResult<Vec<u8>> {
-    let length = u16::try_from(length)
-        .map_err(|_| ZbError::resource_limited("quoted stored block exceeds ZIP16 length"))?;
+    let length = u16::try_from(length).map_err(|_| ZbError::resource_limited("quoted stored block exceeds ZIP16 length"))?;
     let mut bytes = vec![u8::from(final_block)];
     bytes.extend_from_slice(&length.to_le_bytes());
     bytes.extend_from_slice(&(!length).to_le_bytes());
@@ -37,9 +36,7 @@ pub(crate) fn stored(payload: &[u8]) -> ZbResult<Vec<u8>> {
 
 fn repeat_ops(length: usize) -> ZbResult<Vec<Symbol>> {
     if length > 32768 {
-        return Err(ZbError::resource_limited(
-            "recursive copy exceeds DEFLATE window",
-        ));
+        return Err(ZbError::resource_limited("recursive copy exceeds DEFLATE window"));
     }
     chain_repeats(length as u32, length as u16)?
         .into_iter()
@@ -70,14 +67,8 @@ pub(crate) fn five_byte_repeat(length: usize) -> ZbResult<Option<Vec<u8>>> {
         write_fixed(
             &mut writer,
             &[
-                Symbol::Match {
-                    length: left as u16,
-                    distance: length as u16,
-                },
-                Symbol::Match {
-                    length: right as u16,
-                    distance: length as u16,
-                },
+                Symbol::Match { length: left as u16, distance: length as u16 },
+                Symbol::Match { length: right as u16, distance: length as u16 },
             ],
             false,
         )?;
@@ -112,15 +103,9 @@ fn terminal_repeat(length: usize) -> ZbResult<Vec<u8>> {
 
 /// Solve the suffix's encoded-width equation by finite integer enumeration.
 /// CRC values never influence this search, and no archive bytes are iterated.
-pub(crate) fn encode_recursive_stream(
-    prefix: &[u8],
-    suffix: &[u8],
-    max_candidates: u32,
-) -> ZbResult<RecursiveStream> {
+pub(crate) fn encode_recursive_stream(prefix: &[u8], suffix: &[u8], max_candidates: u32) -> ZbResult<RecursiveStream> {
     if prefix.len() > 32763 || suffix.len() > 32755 {
-        return Err(ZbError::resource_limited(
-            "recursive prefix/suffix exceeds DEFLATE window",
-        ));
+        return Err(ZbError::resource_limited("recursive prefix/suffix exceeds DEFLATE window"));
     }
     let mut tail = None;
     let mut candidates = 0;
@@ -128,9 +113,7 @@ pub(crate) fn encode_recursive_stream(
     // encoded bytes is a conservative bound including both terminator blocks.
     for width in 10..=1024 {
         if candidates >= max_candidates {
-            return Err(ZbError::resource_limited(
-                "recursive length candidate budget exhausted",
-            ));
+            return Err(ZbError::resource_limited("recursive length candidate budget exhausted"));
         }
         candidates += 1;
         if suffix.len() + width > 32768 {
@@ -142,8 +125,7 @@ pub(crate) fn encode_recursive_stream(
             break;
         }
     }
-    let tail =
-        tail.ok_or_else(|| ZbError::search_exhausted("recursive suffix width has no candidate"))?;
+    let tail = tail.ok_or_else(|| ZbError::search_exhausted("recursive suffix width has no candidate"))?;
 
     let mut first_literal = prefix.to_vec();
     first_literal.extend(header(prefix.len() + 5, false)?);
@@ -170,9 +152,7 @@ pub(crate) fn encode_recursive_stream(
         bytes.extend_from_slice(&repeat);
     }
     if repeat.len() != 5 {
-        return Err(ZbError::search_exhausted(
-            "recursive prefix cannot reach five-byte bridge",
-        ));
+        return Err(ZbError::search_exhausted("recursive prefix cannot reach five-byte bridge"));
     }
 
     bytes.extend(stored(&repeat)?);
@@ -204,12 +184,7 @@ pub(crate) fn encode_recursive_stream(
     let suffix_copy = bytes.len();
     bytes.extend_from_slice(suffix);
     bytes.extend_from_slice(&tail);
-    Ok(RecursiveStream {
-        bytes,
-        prefix_copy,
-        suffix_copy,
-        length_candidates: candidates,
-    })
+    Ok(RecursiveStream { bytes, prefix_copy, suffix_copy, length_candidates: candidates })
 }
 
 #[cfg(test)]
@@ -219,15 +194,7 @@ mod tests {
 
     #[test]
     fn complete_prefix_suffix_program_is_self_reproducing() {
-        for &(prefix_len, suffix_len) in &[
-            (0, 0),
-            (37, 75),
-            (5, 5),
-            (254, 257),
-            (300, 300),
-            (4096, 4097),
-            (32000, 32000),
-        ] {
+        for &(prefix_len, suffix_len) in &[(0, 0), (37, 75), (5, 5), (254, 257), (300, 300), (4096, 4097), (32000, 32000)] {
             let prefix: Vec<u8> = (0..prefix_len).map(|i| (i % 251) as u8).collect();
             let suffix: Vec<u8> = (0..suffix_len).map(|i| (i % 239) as u8).collect();
             let stream = encode_recursive_stream(&prefix, &suffix, 1024).unwrap();

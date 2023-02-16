@@ -1,18 +1,16 @@
 //! Two-node ZIP constructor with explicit inter-record gaps and legal TLV padding.
 //! Codec construction follows the alternating program in DOI 10.3390/app14219797.
-use crate::deflate::decode_raw_deflate_with_ledger;
-use crate::templates::loopy::encode_loop;
-use crate::{emit_stored_archive, PlanBudgetEstimate, StoredMember, TaskBudgetLedger};
-use zb_solver::{
-    crc32, solve_shared_crc_with_cancel, CancelToken, CrcByteSlot, SharedCrcArchive, SolveOutcome,
-    SolverBudget,
+use crate::{
+    PlanBudgetEstimate, StoredMember, TaskBudgetLedger, deflate::decode_raw_deflate_with_ledger, emit_stored_archive,
+    templates::loopy::encode_loop,
 };
+use zb_solver::{CancelToken, CrcByteSlot, SharedCrcArchive, SolveOutcome, SolverBudget, crc32, solve_shared_crc_with_cancel};
 use zb_types::{
-    ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZbError,
-    ZbResult, ZIP_LOOPY_TWO_NODE_GAPPED_V1,
+    ArchiveGraphMember as Member, ErrorCode, GenerateRequest, LoopyEdgeFact, LoopyFacts, ZIP_LOOPY_TWO_NODE_GAPPED_V0, ZbError,
+    ZbResult,
 };
 /// Explicit opt-in profile for duplicated early directory records and padding gaps.
-pub(crate) const PROFILE: &str = ZIP_LOOPY_TWO_NODE_GAPPED_V1;
+pub(crate) const PROFILE: &str = ZIP_LOOPY_TWO_NODE_GAPPED_V0;
 /// Maximum `ordinary || early-footer || recursive-LFH` width the alternating quote template can hold.
 pub(crate) const QUOTE_WINDOW: usize = 16000;
 
@@ -72,10 +70,7 @@ fn footer(l: &Layout, local_width: usize, crc: u32, compressed: u32, size: u32) 
     put16(&mut b, l.count + 1);
     put16(&mut b, l.count + 1);
     put32(&mut b, cd_size as u32);
-    put32(
-        &mut b,
-        (local_width + l.footer_width + l.header_width + compressed as usize) as u32,
-    );
+    put32(&mut b, (local_width + l.footer_width + l.header_width + compressed as usize) as u32);
     let comment = l.footer_width - cd_size - 22;
     put16(&mut b, comment as u16);
     b.resize(l.footer_width, 0);
@@ -113,10 +108,9 @@ fn assemble(
         positions.push((offset, 4));
     }
     // Quoted target headers contain source CRC (variable bytes 0..4).
-    for offset in [
-        stream_start + stream.target_copy + ow + other_crc,
-        stream_start + stream.target_copy + ow + l.footer_width + 14,
-    ] {
+    for offset in
+        [stream_start + stream.target_copy + ow + other_crc, stream_start + stream.target_copy + ow + l.footer_width + 14]
+    {
         positions.push((offset, 0));
     }
     let mut bytes = l.local.clone();
@@ -126,12 +120,7 @@ fn assemble(
     bytes.extend(footer(l, ow, 0, compressed, size));
     let slots = positions
         .into_iter()
-        .flat_map(|(offset, v)| {
-            (0..4).map(move |i| CrcByteSlot {
-                offset: offset + i,
-                variable: v + i,
-            })
-        })
+        .flat_map(|(offset, v)| (0..4).map(move |i| CrcByteSlot { offset: offset + i, variable: v + i }))
         .collect();
     Ok((bytes, slots))
 }
@@ -154,25 +143,17 @@ fn measure(request: &GenerateRequest, states: &[usize]) -> ZbResult<Measured> {
     for &n in states {
         let list = &g.nodes[n].members;
         let (name, path) = match list.last() {
-            Some(Member::Archive { path, target, .. })
-                if states.contains(target) && *target != n =>
-            {
+            Some(Member::Archive { path, target, .. }) if states.contains(target) && *target != n => {
                 (path.as_bytes().to_vec(), path.clone())
             }
-            _ => {
-                return Err(ZbError::new(
-                    ErrorCode::UnsupportedTopology,
-                    "two-node template requires one cycle edge last",
-                ))
-            }
+            _ => return Err(ZbError::new(ErrorCode::UnsupportedTopology, "two-node template requires one cycle edge last")),
         };
         let ordinary = list[..list.len() - 1]
             .iter()
             .map(|m| match m {
-                Member::Payload { path, bytes } => Ok(StoredMember {
-                    path: path.clone(),
-                    payload: zb_types::decode_base64(bytes)?,
-                }),
+                Member::Payload { path, bytes } => {
+                    Ok(StoredMember { path: path.clone(), payload: zb_types::decode_base64(bytes)? })
+                }
                 _ => Err(ZbError::new(
                     ErrorCode::UnsupportedTopology,
                     "two-node template currently supports ordinary attachments before its sole archive edge",
@@ -196,30 +177,16 @@ fn measure(request: &GenerateRequest, states: &[usize]) -> ZbResult<Measured> {
     }
     let ow = layouts.iter().map(|l| l.local.len()).max().unwrap();
     let hw = layouts.iter().map(|l| 30 + l.name.len() + 6).max().unwrap();
-    let fw = layouts
-        .iter()
-        .map(|l| l.central.len() + 46 + l.name.len() + 22)
-        .max()
-        .unwrap();
+    let fw = layouts.iter().map(|l| l.central.len() + 46 + l.name.len() + 22).max().unwrap();
     if ow + fw + hw > QUOTE_WINDOW || hw > 65535 || fw > 65535 {
-        return Err(ZbError::resource_limited(
-            "two-node quote layout exceeds supported window",
-        ));
+        return Err(ZbError::resource_limited("two-node quote layout exceeds supported window"));
     }
     for l in &mut layouts {
         l.local.resize(ow, 0);
         l.header_width = hw;
         l.footer_width = fw;
     }
-    Ok(Measured {
-        layouts,
-        ordinary_widths,
-        ordinary_members,
-        archive_paths,
-        ow,
-        hw,
-        fw,
-    })
+    Ok(Measured { layouts, ordinary_widths, ordinary_members, archive_paths, ow, hw, fw })
 }
 
 fn check_two_node_materialization_budget(request: &GenerateRequest, total: usize) -> ZbResult<()> {
@@ -230,18 +197,13 @@ fn check_two_node_materialization_budget(request: &GenerateRequest, total: usize
         || request.limits.max_constraint_bits < 64 * 65
         || request.limits.max_solver_operations < (total as u64 * 16 + 1048576)
     {
-        return Err(ZbError::resource_limited(
-            "two-node layout or solver budget exceeded",
-        ));
+        return Err(ZbError::resource_limited("two-node layout or solver budget exceeded"));
     }
     Ok(())
 }
 
 fn two_node_plan_estimate(total: usize, ordinary_members: &[usize]) -> PlanBudgetEstimate {
-    let members_per_archive = ordinary_members
-        .iter()
-        .map(|count| *count as u64 + 1)
-        .sum::<u64>();
+    let members_per_archive = ordinary_members.iter().map(|count| *count as u64 + 1).sum::<u64>();
     PlanBudgetEstimate {
         index_passes: 4,
         member_decodes: members_per_archive * 2,
@@ -253,25 +215,10 @@ fn two_node_plan_estimate(total: usize, ordinary_members: &[usize]) -> PlanBudge
 }
 
 /// Layout and materialization budget for plan (quote window, tail width, decode/solver ceilings).
-pub(crate) fn plan_materialization(
-    request: &GenerateRequest,
-    states: &[usize],
-) -> ZbResult<PlanBudgetEstimate> {
+pub(crate) fn plan_materialization(request: &GenerateRequest, states: &[usize]) -> ZbResult<PlanBudgetEstimate> {
     let measured = measure(request, states)?;
-    let Measured {
-        layouts,
-        ordinary_members,
-        ow,
-        ..
-    } = measured;
-    let (provisional, _) = assemble(
-        &layouts[0],
-        &layouts[1],
-        ow,
-        0,
-        0,
-        request.limits.max_template_candidates,
-    )?;
+    let Measured { layouts, ordinary_members, ow, .. } = measured;
+    let (provisional, _) = assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
     let total = provisional.len();
     check_two_node_materialization_budget(request, total)?;
     Ok(two_node_plan_estimate(total, &ordinary_members))
@@ -291,68 +238,33 @@ pub(crate) fn generate(
 ) -> ZbResult<(Vec<(usize, Vec<u8>)>, LoopyFacts, zb_types::SolverFacts)> {
     cancel.check()?;
     let measured = measure(request, states)?;
-    let Measured {
-        layouts,
-        ordinary_widths,
-        ordinary_members,
-        archive_paths,
-        ow,
-        hw,
-        fw,
-    } = measured;
-    let (provisional, _) =
-        assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
+    let Measured { layouts, ordinary_widths, ordinary_members, archive_paths, ow, hw, fw } = measured;
+    let (provisional, _) = assemble(&layouts[0], &layouts[1], ow, 0, 0, request.limits.max_template_candidates)?;
     let stream_len = provisional.len() - ow - fw - hw - fw;
     let total = provisional.len();
     check_two_node_materialization_budget(request, total)?;
-    let (mut a, sa) = assemble(
-        &layouts[0],
-        &layouts[1],
-        ow,
-        stream_len as u32,
-        total as u32,
-        request.limits.max_template_candidates,
-    )?;
-    let (mut b, mut sb) = assemble(
-        &layouts[1],
-        &layouts[0],
-        ow,
-        stream_len as u32,
-        total as u32,
-        request.limits.max_template_candidates,
-    )?;
+    let (mut a, sa) =
+        assemble(&layouts[0], &layouts[1], ow, stream_len as u32, total as u32, request.limits.max_template_candidates)?;
+    let (mut b, mut sb) =
+        assemble(&layouts[1], &layouts[0], ow, stream_len as u32, total as u32, request.limits.max_template_candidates)?;
     // assemble labels source as 0 and target as 1, reversed for the other archive.
     for slot in &mut sb {
         slot.variable = (slot.variable + 4) % 8;
     }
     if a.len() != total || b.len() != total {
-        return Err(ZbError::verification_failed(
-            "loop layout changed after sizing",
-        ));
+        return Err(ZbError::verification_failed("loop layout changed after sizing"));
     }
     let outcome = solve_shared_crc_with_cancel(
         &[
-            SharedCrcArchive {
-                bytes: &a,
-                slots: &sa,
-                target_byte_vars: [0, 1, 2, 3],
-            },
-            SharedCrcArchive {
-                bytes: &b,
-                slots: &sb,
-                target_byte_vars: [4, 5, 6, 7],
-            },
+            SharedCrcArchive { bytes: &a, slots: &sa, target_byte_vars: [0, 1, 2, 3] },
+            SharedCrcArchive { bytes: &b, slots: &sb, target_byte_vars: [4, 5, 6, 7] },
         ],
         8,
         SolverBudget::default(),
-        Some("loopy.crc.shared/v1".into()),
+        Some("loopy.crc.shared/v0".into()),
         cancel,
     );
-    let SolveOutcome::Sat {
-        assignment,
-        evidence,
-        ..
-    } = outcome
+    let SolveOutcome::Sat { assignment, evidence, .. } = outcome
     else {
         return Err(match outcome {
             SolveOutcome::Unsat { message, .. } => ZbError {
@@ -362,8 +274,9 @@ pub(crate) fn generate(
             },
             SolveOutcome::ResourceLimited { message } => ZbError::resource_limited(message),
             SolveOutcome::Cancelled { message } => ZbError::cancelled(message),
-            SolveOutcome::InvalidProblem { message }
-            | SolveOutcome::InternalError { message } => ZbError::new(ErrorCode::Internal, message),
+            SolveOutcome::InvalidProblem { message } | SolveOutcome::InternalError { message } => {
+                ZbError::new(ErrorCode::Internal, message)
+            }
             SolveOutcome::Sat { .. } => unreachable!(),
         });
     };
@@ -381,25 +294,18 @@ pub(crate) fn generate(
     let crc_a = u32::from_le_bytes(values[..4].try_into().unwrap());
     let crc_b = u32::from_le_bytes(values[4..].try_into().unwrap());
     if crc32(&a) != crc_a || crc32(&b) != crc_b {
-        return Err(ZbError::verification_failed(
-            "loop CRC solution failed back substitution",
-        ));
+        return Err(ZbError::verification_failed("loop CRC solution failed back substitution"));
     }
     let mut verify_ledger = TaskBudgetLedger::new(request.limits.clone());
     for (bytes, expected) in [(&a, &b), (&b, &a)] {
         let data = &bytes[ow + fw + hw..ow + fw + hw + stream_len];
         let out = decode_raw_deflate_with_ledger(data, total as u64, &mut verify_ledger)?;
         if out != *expected {
-            return Err(ZbError::verification_failed(
-                "loop complete byte equality failed",
-            ));
+            return Err(ZbError::verification_failed("loop complete byte equality failed"));
         }
     }
     if request.variant == zb_types::VariantKind::Loopy && a == b {
-        return Err(ZbError::new(
-            ErrorCode::PeriodMismatch,
-            "two-state loop collapses to byte period one",
-        ));
+        return Err(ZbError::new(ErrorCode::PeriodMismatch, "two-state loop collapses to byte period one"));
     }
     let byte_period = if a == b { 1 } else { 2 };
     let facts = LoopyFacts {

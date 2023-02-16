@@ -29,10 +29,10 @@ export type WirePayload = {
 };
 
 export type WireGenerateRequest = {
-    schema: "zb.request/v2";
+    schema: "zb.request/v0";
     container: "zip";
     variant: string;
-    selfMemberPath?: string;
+    fixedPoint?: string;
     payloads?: WirePayload[];
     topology?: unknown;
     graph?: unknown;
@@ -40,10 +40,10 @@ export type WireGenerateRequest = {
     limits?: unknown;
 };
 
-/** Build a `zb.request/v2` JSON document with base64 payload bytes. */
+/** Build a `zb.request/v0` JSON document with base64 payload bytes. */
 export function encodeGenerateRequestJson(input: {
     variant: string;
-    selfMemberPath?: string;
+    fixedPoint?: string;
     payloads?: Array<{ archivePath: string; bytes?: Uint8Array }>;
     topology?: unknown;
     graph?: unknown;
@@ -51,13 +51,13 @@ export function encodeGenerateRequestJson(input: {
     limits?: unknown;
 }): string {
     const wire: WireGenerateRequest = {
-        schema: "zb.request/v2",
+        schema: "zb.request/v0",
         container: "zip",
         variant: input.variant,
     };
     wire.graph = input.graph; wire.profile = input.profile; wire.limits = input.limits;
-    if (input.selfMemberPath !== undefined) {
-        wire.selfMemberPath = input.selfMemberPath;
+    if (input.fixedPoint !== undefined) {
+        wire.fixedPoint = input.fixedPoint;
     }
     if (input.topology !== undefined) {
         wire.topology = input.topology;

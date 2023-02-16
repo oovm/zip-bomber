@@ -100,7 +100,7 @@ pub struct VerificationReport {
     pub cycle: Option<CycleVerifyFacts>,
 }
 
-/// Verify one archive and return charged task budget usage for `zb.report/v2`.
+/// Verify one archive and return charged task budget usage for `zb.report/v0`.
 pub fn verify_zip_task_budget(bytes: &[u8], limits: &GenerateLimits) -> ZbResult<BudgetUsage> {
     let mut ledger = TaskBudgetLedger::new(limits.clone());
     verify_zip_bytes_with_ledger(bytes, &mut ledger)?;
@@ -113,18 +113,12 @@ pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
 }
 
 /// Verify with an explicit task budget ledger (Living `13` §5).
-pub fn verify_zip_bytes_with_limits(
-    bytes: &[u8],
-    limits: &GenerateLimits,
-) -> ZbResult<VerificationReport> {
+pub fn verify_zip_bytes_with_limits(bytes: &[u8], limits: &GenerateLimits) -> ZbResult<VerificationReport> {
     let mut ledger = TaskBudgetLedger::new(limits.clone());
     verify_zip_bytes_with_ledger(bytes, &mut ledger)
 }
 
-pub(crate) fn verify_zip_bytes_with_ledger(
-    bytes: &[u8],
-    ledger: &mut TaskBudgetLedger,
-) -> ZbResult<VerificationReport> {
+pub(crate) fn verify_zip_bytes_with_ledger(bytes: &[u8], ledger: &mut TaskBudgetLedger) -> ZbResult<VerificationReport> {
     let acorn = AcornZipCapability::observed();
     if !acorn.supports_v0_full_verify() {
         let missing: Vec<String> = acorn.missing().into_iter().map(str::to_string).collect();
@@ -148,9 +142,7 @@ pub(crate) fn verify_zip_bytes_with_ledger(
         .map_err(|err| ZbError::verification_failed(format!("Acorn ZIP index failed: {err}")))?;
 
     if index.members.is_empty() && !is_empty_zip(bytes) {
-        return Err(ZbError::verification_failed(
-            "Acorn ZIP index returned no members",
-        ));
+        return Err(ZbError::verification_failed("Acorn ZIP index returned no members"));
     }
 
     let mut notes = Vec::new();
@@ -162,15 +154,8 @@ pub(crate) fn verify_zip_bytes_with_ledger(
         let uncompressed = member.uncompressed_size as u64;
         let budget = ledger.reserve_member_decode(archive_len, compressed, uncompressed)?;
         let source = MemorySource::from_bytes("zb-verify.zip", owned.clone());
-        let (_decoded, facts) =
-            decode_member_with_facts(format!("member-{i}"), source, member, &budget).map_err(
-                |err| {
-                    ZbError::verification_failed(format!(
-                        "Acorn decode failed for `{}`: {err}",
-                        member.path
-                    ))
-                },
-            )?;
+        let (_decoded, facts) = decode_member_with_facts(format!("member-{i}"), source, member, &budget)
+            .map_err(|err| ZbError::verification_failed(format!("Acorn decode failed for `{}`: {err}", member.path)))?;
         ledger.settle_member_decode(facts.decoded_size as u64, compressed)?;
         if !facts.checksum_ok() {
             return Err(ZbError::verification_failed(format!(
@@ -178,26 +163,14 @@ pub(crate) fn verify_zip_bytes_with_ledger(
                 member.path, facts.crc32_expected, facts.crc32_actual, facts.fully_consumed
             )));
         }
-        notes.push(format!(
-            "member=`{}` crc_ok fully_consumed decoded={}",
-            member.path, facts.decoded_size
-        ));
+        notes.push(format!("member=`{}` crc_ok fully_consumed decoded={}", member.path, facts.decoded_size));
     }
 
     if !acorn.format_status_query {
-        notes.push(
-            "format_status_query unavailable (trailing-data / data-descriptor not asserted)"
-                .to_string(),
-        );
+        notes.push("format_status_query unavailable (trailing-data / data-descriptor not asserted)".to_string());
     }
 
-    Ok(VerificationReport {
-        ok: true,
-        acorn,
-        missing_capabilities: Vec::new(),
-        notes,
-        cycle: None,
-    })
+    Ok(VerificationReport { ok: true, acorn, missing_capabilities: Vec::new(), notes, cycle: None })
 }
 
 /// Verify every artifact in an [`ArtifactSet`], plus root / logical map integrity.
@@ -209,10 +182,7 @@ pub fn verify_artifact_set(set: &ArtifactSet) -> ZbResult<VerificationReport> {
 }
 
 /// Verify every artifact using one shared task ledger.
-pub fn verify_artifact_set_with_limits(
-    set: &ArtifactSet,
-    limits: &GenerateLimits,
-) -> ZbResult<VerificationReport> {
+pub fn verify_artifact_set_with_limits(set: &ArtifactSet, limits: &GenerateLimits) -> ZbResult<VerificationReport> {
     let mut ledger = TaskBudgetLedger::new(limits.clone());
     verify_artifact_set_with_ledger(set, &mut ledger)
 }
@@ -222,26 +192,19 @@ pub(crate) fn verify_artifact_set_with_ledger(
     ledger: &mut TaskBudgetLedger,
 ) -> ZbResult<VerificationReport> {
     if set.artifacts.is_empty() {
-        return Err(ZbError::new(
-            zb_types::ErrorCode::InvalidTopology,
-            "artifact set has no artifacts to verify",
-        ));
+        return Err(ZbError::new(zb_types::ErrorCode::InvalidTopology, "artifact set has no artifacts to verify"));
     }
-    let root = set
-        .artifacts
-        .iter()
-        .find(|a| a.id == set.root)
-        .ok_or_else(|| {
-            ZbError::new(
-                zb_types::ErrorCode::InvalidTopology,
-                format!("artifact set root `{}` is missing from artifacts", set.root.0),
-            )
-        })?;
+    let root = set.artifacts.iter().find(|a| a.id == set.root).ok_or_else(|| {
+        ZbError::new(
+            zb_types::ErrorCode::InvalidTopology,
+            format!("artifact set root `{}` is missing from artifacts", set.root.0),
+        )
+    })?;
 
-    let ids: std::collections::BTreeSet<&str> =
-        set.artifacts.iter().map(|a| a.id.0.as_str()).collect();
+    let ids: std::collections::BTreeSet<&str> = set.artifacts.iter().map(|a| a.id.0.as_str()).collect();
     for entry in &set.logical_node_map {
-        let Some((_, id)) = entry.rsplit_once('=') else {
+        let Some((_, id)) = entry.rsplit_once('=')
+        else {
             return Err(ZbError::new(
                 zb_types::ErrorCode::InvalidTopology,
                 format!("logical_node_map entry `{entry}` is not `label=id`"),
@@ -264,27 +227,15 @@ pub(crate) fn verify_artifact_set_with_ledger(
     for artifact in &set.artifacts {
         let report = verify_zip_bytes_with_ledger(&artifact.bytes, ledger)?;
         acorn = report.acorn;
-        notes.push(format!(
-            "artifact=`{}` bytes={} ok",
-            artifact.id.0,
-            artifact.bytes.len()
-        ));
+        notes.push(format!("artifact=`{}` bytes={} ok", artifact.id.0, artifact.bytes.len()));
         for note in report.notes {
             notes.push(format!("{}: {note}", artifact.id.0));
         }
     }
 
-    Ok(VerificationReport {
-        ok: true,
-        acorn,
-        missing_capabilities: Vec::new(),
-        notes,
-        cycle: None,
-    })
+    Ok(VerificationReport { ok: true, acorn, missing_capabilities: Vec::new(), notes, cycle: None })
 }
 
 pub(crate) fn is_empty_zip(bytes: &[u8]) -> bool {
-    bytes.len() == 22
-        && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06]
-        && bytes[4..22].iter().all(|b| *b == 0)
+    bytes.len() == 22 && bytes[0..4] == [0x50, 0x4b, 0x05, 0x06] && bytes[4..22].iter().all(|b| *b == 0)
 }

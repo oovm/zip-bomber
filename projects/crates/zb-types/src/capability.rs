@@ -2,9 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ContainerKind, VariantKind, ZIP_LOOPY_TWO_NODE_GAPPED_V1, ZIP_PROFILE_V0,
-};
+use crate::{ContainerKind, VariantKind, ZIP_LOOPY_TWO_NODE_GAPPED_V0, ZIP_PROFILE_V0};
 
 /// Coarse topology class for capability registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -60,34 +58,14 @@ impl CapabilitySet {
     /// Current capability snapshot keyed by variant × topology × profile.
     pub fn template_declared() -> Self {
         let rows = [
-            (
-                VariantKind::Bomb,
-                TopologyClass::NestedTree,
-                ZIP_PROFILE_V0,
-                CapabilityStatus::Implemented,
-            ),
-            (
-                VariantKind::Quine,
-                TopologyClass::SelfLoop,
-                ZIP_PROFILE_V0,
-                CapabilityStatus::Verified,
-            ),
-            (
-                VariantKind::Loopy,
-                TopologyClass::DirectedCycle,
-                ZIP_LOOPY_TWO_NODE_GAPPED_V1,
-                CapabilityStatus::Verified,
-            ),
-            (
-                VariantKind::Fractal,
-                TopologyClass::FractalFinite,
-                ZIP_PROFILE_V0,
-                CapabilityStatus::Implemented,
-            ),
+            (VariantKind::Bomb, TopologyClass::NestedTree, ZIP_PROFILE_V0, CapabilityStatus::Implemented),
+            (VariantKind::Quine, TopologyClass::SelfLoop, ZIP_PROFILE_V0, CapabilityStatus::Verified),
+            (VariantKind::Loopy, TopologyClass::DirectedCycle, ZIP_LOOPY_TWO_NODE_GAPPED_V0, CapabilityStatus::Verified),
+            (VariantKind::Fractal, TopologyClass::FractalFinite, ZIP_PROFILE_V0, CapabilityStatus::Implemented),
             (
                 VariantKind::Fractal,
                 TopologyClass::FractalRecursive,
-                ZIP_LOOPY_TWO_NODE_GAPPED_V1,
+                ZIP_LOOPY_TWO_NODE_GAPPED_V0,
                 CapabilityStatus::Implemented,
             ),
         ];

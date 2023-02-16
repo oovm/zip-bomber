@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createZipBomber, loadZipBomberNode, zipBomb, zipQuine } from "../src/node/index.js";
+import { createZipBomber, loadZipBomberNode, bomb, quine } from "../src/node/index.js";
 import { createSharedZipBomberApi } from "../src/facade.js";
 import { VARIANTS } from "../src/types.js";
 
@@ -25,7 +25,7 @@ test("stub capabilities keep quine declared and mark bomb when hooked", async ()
             ok: true,
             bytes: new Uint8Array([0x50, 0x4b]),
             reportJson: JSON.stringify({
-                schema: "zb.report/v1",
+                schema: "zb.report/v0",
                 container: "zip",
                 variant: "bomb",
                 status: "ok",
@@ -43,8 +43,8 @@ test("stub capabilities keep quine declared and mark bomb when hooked", async ()
     assert.equal(quine?.profile, "zip.profile/v0-stub");
     const loopy = caps.entries.find((e) => e.variant === "loopy");
     assert.equal(loopy?.status, "verified");
-    assert.equal(loopy?.profile, "zip.loopy-two-node.gapped/v1");
-    const bombOut = await hooked.zipBomb();
+    assert.equal(loopy?.profile, "zip.loopy-two-node.gapped/v0");
+    const bombOut = await hooked.bomb();
     assert.equal(bombOut.ok, true);
     if (bombOut.ok) {
         assert.ok(bombOut.value.artifacts[0]?.bytes.length >= 2);
@@ -58,24 +58,24 @@ test("createZipBomber bomb succeeds when native binding is present", async () =>
     const caps = await api.capabilities();
     assert.ok(caps.entries.length >= 4);
     if (node.generateVariant) {
-        const bomb = await zipBomb();
-        assert.equal(bomb.ok, true);
-        if (bomb.ok) {
-            assert.ok(bomb.value.artifacts[0]?.bytes.length > 30);
-            assert.equal(bomb.value.artifacts[0]?.bytes[0], 0x50);
-            assert.equal(bomb.value.artifacts[0]?.bytes[1], 0x4b);
+        const bombOutcome = await bomb();
+        assert.equal(bombOutcome.ok, true);
+        if (bombOutcome.ok) {
+            assert.ok(bombOutcome.value.artifacts[0]?.bytes.length > 30);
+            assert.equal(bombOutcome.value.artifacts[0]?.bytes[0], 0x50);
+            assert.equal(bombOutcome.value.artifacts[0]?.bytes[1], 0x4b);
         }
         const native = node.generateVariant("bomb");
         assert.equal(native.ok, true);
         assert.ok((native.bytes?.length ?? 0) > 30);
     } else {
-        const bomb = await zipBomb();
-        assert.equal(bomb.ok, false);
-        if (!bomb.ok) {
-            assert.equal(bomb.error.category, "not_implemented");
+        const bombOutcome = await bomb();
+        assert.equal(bombOutcome.ok, false);
+        if (!bombOutcome.ok) {
+            assert.equal(bombOutcome.error.category, "not_implemented");
         }
     }
-    const quine = await zipQuine();
-    assert.equal(quine.ok, Boolean(node.generateVariant));
+    const quineOutcome = await quine();
+    assert.equal(quineOutcome.ok, Boolean(node.generateVariant));
     await api.dispose();
 });

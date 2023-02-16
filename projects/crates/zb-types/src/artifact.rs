@@ -48,10 +48,6 @@ impl ArtifactSet {
     /// Empty stub set (template).
     pub fn empty_stub(root: impl Into<String>) -> Self {
         let root = ArtifactId::new(root);
-        Self {
-            root,
-            artifacts: Vec::new(),
-            logical_node_map: Vec::new(),
-        }
+        Self { root, artifacts: Vec::new(), logical_node_map: Vec::new() }
     }
 }

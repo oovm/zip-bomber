@@ -46,9 +46,4 @@ impl std::fmt::Display for VariantKind {
 }
 
 /// All variants in stable display order.
-pub const ALL_VARIANTS: [VariantKind; 4] = [
-    VariantKind::Bomb,
-    VariantKind::Quine,
-    VariantKind::Loopy,
-    VariantKind::Fractal,
-];
+pub const ALL_VARIANTS: [VariantKind; 4] = [VariantKind::Bomb, VariantKind::Quine, VariantKind::Loopy, VariantKind::Fractal];

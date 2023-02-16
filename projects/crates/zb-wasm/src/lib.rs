@@ -4,22 +4,17 @@
 
 use wasm_bindgen::prelude::*;
 use zb_generate::{
-    capabilities, generate, list_variants, plan_generate, report_json, verify_artifact_set,
-    verify_artifact_set_for_request, verify_artifact_set_with_spec, verify_zip_bytes,
+    capabilities, generate, list_variants, plan_generate, report_json, verify_artifact_set, verify_artifact_set_for_request,
+    verify_artifact_set_with_spec, verify_zip_bytes,
 };
 use zb_types::{
-    artifact_set_from_json, generate_request_from_json, verification_spec_from_json, GenerateRequest,
-    Outcome, VariantKind,
+    GenerateRequest, Outcome, VariantKind, artifact_set_from_json, generate_request_from_json, verification_spec_from_json,
 };
 
 /// Comma-separated variant ids for capability probes.
 #[wasm_bindgen(js_name = listVariants)]
 pub fn list_variants_js() -> String {
-    list_variants()
-        .iter()
-        .map(|v| v.as_str())
-        .collect::<Vec<_>>()
-        .join(",")
+    list_variants().iter().map(|v| v.as_str()).collect::<Vec<_>>().join(",")
 }
 
 /// JSON capability matrix (`CapabilitySet`).
@@ -48,16 +43,8 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            TABLE[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            TABLE[(n & 63) as usize] as char
-        } else {
-            '='
-        });
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
     }
     out
 }
@@ -128,16 +115,14 @@ fn generate_payload(request: GenerateRequest) -> Result<String, JsValue> {
 /// Plan a bare variant and return JSON `{ ok, feasible?, summary?, profile?, report, error? }`.
 #[wasm_bindgen(js_name = planVariantJson)]
 pub fn plan_variant_json(variant: String) -> Result<String, JsValue> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
+    let kind = VariantKind::parse(&variant).ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
     plan_payload(GenerateRequest::bare(kind))
 }
 
-/// Plan from a full `zb.request/v2` JSON wire document.
+/// Plan from a full `zb.request/v0` JSON wire document.
 #[wasm_bindgen(js_name = planRequestJson)]
 pub fn plan_request_json(request_json: String) -> Result<String, JsValue> {
-    let request = generate_request_from_json(&request_json)
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let request = generate_request_from_json(&request_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
     plan_payload(request)
 }
 
@@ -148,10 +133,7 @@ fn b64_to_bytes(b64: &str) -> Result<Vec<u8>, JsValue> {
         if ch == b'=' {
             break;
         }
-        let idx = TABLE
-            .iter()
-            .position(|b| *b == ch)
-            .ok_or_else(|| JsValue::from_str("invalid base64"))?;
+        let idx = TABLE.iter().position(|b| *b == ch).ok_or_else(|| JsValue::from_str("invalid base64"))?;
         values.push(idx as u8);
     }
     let mut out = Vec::new();
@@ -172,9 +154,7 @@ fn b64_to_bytes(b64: &str) -> Result<Vec<u8>, JsValue> {
     Ok(out)
 }
 
-fn verify_payload(
-    result: zb_types::ZbResult<zb_generate::VerificationReport>,
-) -> Result<String, JsValue> {
+fn verify_payload(result: zb_types::ZbResult<zb_generate::VerificationReport>) -> Result<String, JsValue> {
     let payload = match result {
         Ok(report) => serde_json::json!({
             "ok": report.ok,
@@ -201,15 +181,11 @@ pub fn verify_zip_bytes_json(bytes_base64: String) -> Result<String, JsValue> {
 
 /// Verify a full artifact set JSON, optionally with cycle verification spec JSON.
 #[wasm_bindgen(js_name = verifyArtifactSetJson)]
-pub fn verify_artifact_set_json(
-    set_json: String,
-    spec_json: Option<String>,
-) -> Result<String, JsValue> {
+pub fn verify_artifact_set_json(set_json: String, spec_json: Option<String>) -> Result<String, JsValue> {
     let set = artifact_set_from_json(&set_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
     match spec_json {
         Some(spec) if !spec.trim().is_empty() => {
-            let spec = verification_spec_from_json(&spec)
-                .map_err(|err| JsValue::from_str(&err.to_string()))?;
+            let spec = verification_spec_from_json(&spec).map_err(|err| JsValue::from_str(&err.to_string()))?;
             verify_payload(verify_artifact_set_with_spec(&set, &spec))
         }
         _ => verify_payload(verify_artifact_set(&set)),
@@ -218,28 +194,22 @@ pub fn verify_artifact_set_json(
 
 /// Verify an artifact set using edges / period inferred from a generate request JSON.
 #[wasm_bindgen(js_name = verifyArtifactSetForRequestJson)]
-pub fn verify_artifact_set_for_request_json(
-    set_json: String,
-    request_json: String,
-) -> Result<String, JsValue> {
+pub fn verify_artifact_set_for_request_json(set_json: String, request_json: String) -> Result<String, JsValue> {
     let set = artifact_set_from_json(&set_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
-    let request = generate_request_from_json(&request_json)
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let request = generate_request_from_json(&request_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
     verify_payload(verify_artifact_set_for_request(&set, &request))
 }
 
 /// Generate a bare variant and return JSON `{ ok, report, bytesBase64?, error? }`.
 #[wasm_bindgen(js_name = generateVariantJson)]
 pub fn generate_variant_json(variant: String) -> Result<String, JsValue> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
+    let kind = VariantKind::parse(&variant).ok_or_else(|| JsValue::from_str(&format!("unknown variant `{variant}`")))?;
     generate_payload(GenerateRequest::bare(kind))
 }
 
-/// Generate from a full `zb.request/v2` JSON wire document.
+/// Generate from a full `zb.request/v0` JSON wire document.
 #[wasm_bindgen(js_name = generateRequestJson)]
 pub fn generate_request_json(request_json: String) -> Result<String, JsValue> {
-    let request = generate_request_from_json(&request_json)
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let request = generate_request_from_json(&request_json).map_err(|err| JsValue::from_str(&err.to_string()))?;
     generate_payload(request)
 }

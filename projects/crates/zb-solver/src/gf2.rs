@@ -23,11 +23,7 @@ impl BitMatrix {
     /// Zero matrix.
     pub fn zeros(rows: usize, cols: usize) -> Self {
         let wpr = Self::words_per_row(cols);
-        Self {
-            rows,
-            cols,
-            data: vec![0; rows.saturating_mul(wpr)],
-        }
+        Self { rows, cols, data: vec![0; rows.saturating_mul(wpr)] }
     }
 
     fn wpr(&self) -> usize {
@@ -113,7 +109,8 @@ pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResul
                 break;
             }
         }
-        let Some(piv) = pivot else {
+        let Some(piv) = pivot
+        else {
             continue;
         };
         matrix.swap_rows(row, piv);
@@ -140,10 +137,7 @@ pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResul
             return Err(ZbError {
                 category: ErrorCategory::ConstraintUnsatisfied,
                 code: ErrorCode::Internal,
-                message: format!(
-                    "gf2_inconsistent_row={} GF(2) system is inconsistent (0 = 1)",
-                    origin[r]
-                ),
+                message: format!("gf2_inconsistent_row={} GF(2) system is inconsistent (0 = 1)", origin[r]),
             });
         }
     }
@@ -157,11 +151,7 @@ pub fn solve_with_cancel(mut matrix: BitMatrix, cancel: &CancelToken) -> ZbResul
         }
     }
 
-    Ok(Gf2Solution {
-        assignment,
-        rank,
-        unique: rank == cols,
-    })
+    Ok(Gf2Solution { assignment, rank, unique: rank == cols })
 }
 
 /// Build and solve from boolean coefficient rows plus RHS.
@@ -170,24 +160,14 @@ pub fn solve_rows(coeffs: &[Vec<bool>], rhs: &[bool]) -> ZbResult<Gf2Solution> {
 }
 
 /// [`solve_rows`] with cooperative cancel checks during elimination.
-pub fn solve_rows_with_cancel(
-    coeffs: &[Vec<bool>],
-    rhs: &[bool],
-    cancel: &CancelToken,
-) -> ZbResult<Gf2Solution> {
+pub fn solve_rows_with_cancel(coeffs: &[Vec<bool>], rhs: &[bool], cancel: &CancelToken) -> ZbResult<Gf2Solution> {
     cancel.check()?;
     if coeffs.len() != rhs.len() {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            "GF(2) coeff row count does not match rhs length",
-        ));
+        return Err(ZbError::new(ErrorCode::Internal, "GF(2) coeff row count does not match rhs length"));
     }
     let cols = coeffs.first().map(Vec::len).unwrap_or(0);
     if coeffs.iter().any(|row| row.len() != cols) {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            "GF(2) coeff rows have unequal widths",
-        ));
+        return Err(ZbError::new(ErrorCode::Internal, "GF(2) coeff rows have unequal widths"));
     }
     let mut matrix = BitMatrix::zeros(coeffs.len(), cols);
     for (r, row) in coeffs.iter().enumerate() {

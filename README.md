@@ -20,7 +20,7 @@ period checks. **implemented** means the code path exists and is budget-planned 
 verified. `capabilities()` publishes the same matrix at runtime.
 
 Known boundaries are rejected rather than approximated: a cycle longer than two nodes returns `unsupported_topology`,
-and a two-node cycle that does not select the `zip.loopy-two-node.gapped/v1` profile returns `unsupported_profile`.
+and a two-node cycle that does not select the `zip.loopy-two-node.gapped/v0` profile returns `unsupported_profile`.
 
 ## 🚀 Install and run
 

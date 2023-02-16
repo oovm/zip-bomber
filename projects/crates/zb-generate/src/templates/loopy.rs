@@ -6,16 +6,14 @@ use acorn_codec::{
 };
 
 use super::recursive::{aligned_repeat, header, stored};
-use crate::deflate::{chain_repeats, write_fixed, write_stored, SkeletonOp};
+use crate::deflate::{SkeletonOp, chain_repeats, write_fixed, write_stored};
 use zb_types::{ZbError, ZbResult};
 
 const R4: [u8; 5] = [0x42, 0x88, 0x21, 0xc4, 0x00];
 
 fn ops(length: usize, distance: usize) -> ZbResult<Vec<Symbol>> {
     if distance > 32768 || distance == 0 {
-        return Err(ZbError::resource_limited(
-            "loop copy exceeds DEFLATE window",
-        ));
+        return Err(ZbError::resource_limited("loop copy exceeds DEFLATE window"));
     }
     chain_repeats(length as u32, distance as u16)?
         .into_iter()
@@ -54,9 +52,7 @@ pub(crate) fn encode_loop(
     max_candidates: u32,
 ) -> ZbResult<LoopStream> {
     if source.len() != target.len() || source_footer_header.len() != target_footer_header.len() {
-        return Err(ZbError::search_exhausted(
-            "loop quote regions must have equal widths",
-        ));
+        return Err(ZbError::search_exhausted("loop quote regions must have equal widths"));
     }
     let mut a = target.to_vec();
     a.extend(target_footer_header);
@@ -69,10 +65,7 @@ pub(crate) fn encode_loop(
     let source_copy = bytes.len() + 5;
     bytes.extend(stored(&b)?);
     let mut cursor = a.len() + b.len();
-    let mut initial = vec![Symbol::Match {
-        length: 5,
-        distance: 5,
-    }];
+    let mut initial = vec![Symbol::Match { length: 5, distance: 5 }];
     initial.extend(ops(b.len(), a.len() + b.len() + 5)?);
     let mut repeat = aligned(&initial)?;
     bytes.extend(&repeat);
@@ -96,9 +89,7 @@ pub(crate) fn encode_loop(
         cursor += bridge.len();
     }
     if repeat.len() != 5 {
-        return Err(ZbError::search_exhausted(
-            "loop bridge did not reach five bytes",
-        ));
+        return Err(ZbError::search_exhausted("loop bridge did not reach five bytes"));
     }
     bytes.extend(stored(&repeat)?);
     cursor += 5;
@@ -127,9 +118,7 @@ pub(crate) fn encode_loop(
     let mut tail = None;
     for (attempt, width) in (10..=1024).enumerate() {
         if attempt >= max_candidates as usize {
-            return Err(ZbError::resource_limited(
-                "loop width candidate budget exhausted",
-            ));
+            return Err(ZbError::resource_limited("loop width candidate budget exhausted"));
         }
         let distance = base_distance + 2 * width;
         if distance > 32768 {
@@ -146,9 +135,7 @@ pub(crate) fn encode_loop(
             break;
         }
     }
-    let tail = tail.ok_or_else(|| {
-        ZbError::search_exhausted("loop tail width equation has no bounded solution")
-    })?;
+    let tail = tail.ok_or_else(|| ZbError::search_exhausted("loop tail width equation has no bounded solution"))?;
     let mut exit = R4.to_vec();
     exit.extend(header(0, false)?);
     exit.extend(header(0, false)?);
@@ -161,11 +148,7 @@ pub(crate) fn encode_loop(
     bytes.extend([0; 4]);
     bytes.extend(&tail);
     bytes.extend(&tail);
-    Ok(LoopStream {
-        bytes,
-        target_copy,
-        source_copy,
-    })
+    Ok(LoopStream { bytes, target_copy, source_copy })
 }
 
 #[cfg(test)]
@@ -187,9 +170,7 @@ mod tests {
             qb.extend(&hb);
             let sa = encode_loop(&a, &b, &qa, &qb, 40, 1024).unwrap();
             let sb = encode_loop(&b, &a, &qb, &qa, 40, 1024).unwrap();
-            for (stream, prefix, footer, head, other) in
-                [(&sa, &b, &fb, &hb, &sb), (&sb, &a, &fa, &ha, &sa)]
-            {
+            for (stream, prefix, footer, head, other) in [(&sa, &b, &fb, &hb, &sb), (&sb, &a, &fa, &ha, &sa)] {
                 let mut expected = prefix.clone();
                 expected.extend(footer);
                 expected.extend(head);

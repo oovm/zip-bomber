@@ -25,10 +25,7 @@ pub fn dispatch(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
 }
 
 /// [`dispatch`] with cooperative cancel for Quine CRC solve steps.
-pub fn dispatch_with_cancel(
-    request: GenerateRequest,
-    cancel: &CancelToken,
-) -> ZbResult<ArtifactBundle> {
+pub fn dispatch_with_cancel(request: GenerateRequest, cancel: &CancelToken) -> ZbResult<ArtifactBundle> {
     match request.variant {
         VariantKind::Bomb => bomb::generate(request),
         VariantKind::Quine => quine::generate_with_cancel(request, cancel),
@@ -54,8 +51,5 @@ pub(super) fn stub_bundle(request: GenerateRequest) -> ArtifactBundle {
         request.topology.nodes.len(),
         request.topology.edges.len(),
     );
-    ArtifactBundle {
-        artifacts: ArtifactSet::empty_stub("root"),
-        report,
-    }
+    ArtifactBundle { artifacts: ArtifactSet::empty_stub("root"), report }
 }

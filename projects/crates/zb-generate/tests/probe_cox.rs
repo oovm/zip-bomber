@@ -1,17 +1,9 @@
-use zb_generate::{
-    decode_raw_deflate, DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol,
-};
+use zb_generate::{DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol, decode_raw_deflate};
 
 fn r4() -> DeflateBlock {
     DeflateBlock::Fixed(FixedBlock::new(vec![
-        Symbol::Match {
-            length: 10,
-            distance: 20,
-        },
-        Symbol::Match {
-            length: 10,
-            distance: 20,
-        },
+        Symbol::Match { length: 10, distance: 20 },
+        Symbol::Match { length: 10, distance: 20 },
     ]))
 }
 
@@ -46,10 +38,7 @@ fn appending_terminator_does_not_fix_core_identity() {
         (stored(&[]), true), // final empty
     ]);
     eprintln!("len with trailing empty final={}", stream.len());
-    eprintln!(
-        "hdr at 75..80 (should be nonfinal)={:02x?}",
-        &stream[75..80]
-    );
+    eprintln!("hdr at 75..80 (should be nonfinal)={:02x?}", &stream[75..80]);
     eprintln!("last 5 bytes={:02x?}", &stream[stream.len() - 5..]);
     let out = decode_raw_deflate(&stream, stream.len() as u64).expect("inflate");
     eprintln!("inflate len={}", out.len());
@@ -93,11 +82,7 @@ fn asymmetric_core_has_a_constant_finality_conflict() {
             (stored(&data3), true),
         ]);
         let out = decode_raw_deflate(&cand, cand.len() as u64).expect("inflate");
-        eprintln!(
-            "round {round}: inflate==cand {} (inflen={})",
-            out == cand,
-            out.len()
-        );
+        eprintln!("round {round}: inflate==cand {} (inflen={})", out == cand, out.len());
         assert_ne!(out, cand, "this asymmetric skeleton is unsatisfiable");
         assert_eq!(out[55], 1);
         assert_eq!(cand[55], 0);

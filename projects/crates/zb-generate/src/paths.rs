@@ -7,16 +7,10 @@ use zb_types::{ErrorCode, PayloadSpec, ZbError, ZbResult};
 /// Directory entries must end with `/`. Ordinary files must not.
 pub fn validate_member_path(path: &str, allow_directory: bool) -> ZbResult<()> {
     if path.is_empty() {
-        return Err(ZbError::new(
-            ErrorCode::InvalidTopology,
-            "member path must be non-empty",
-        ));
+        return Err(ZbError::new(ErrorCode::InvalidTopology, "member path must be non-empty"));
     }
     if path.as_bytes().len() > u16::MAX as usize {
-        return Err(ZbError::new(
-            ErrorCode::InvalidTopology,
-            format!("member path `{path}` exceeds ZIP16 name length"),
-        ));
+        return Err(ZbError::new(ErrorCode::InvalidTopology, format!("member path `{path}` exceeds ZIP16 name length")));
     }
     if path.starts_with('/') || path.contains('\\') || path.contains('\0') || path.contains(':') {
         return Err(ZbError::new(
@@ -26,22 +20,13 @@ pub fn validate_member_path(path: &str, allow_directory: bool) -> ZbResult<()> {
     }
     let is_dir = path.ends_with('/');
     if is_dir && !allow_directory {
-        return Err(ZbError::new(
-            ErrorCode::InvalidTopology,
-            format!("member path `{path}` cannot be a directory entry here"),
-        ));
+        return Err(ZbError::new(ErrorCode::InvalidTopology, format!("member path `{path}` cannot be a directory entry here")));
     }
     let trimmed = path.strip_suffix('/').unwrap_or(path);
     if trimmed.is_empty() {
-        return Err(ZbError::new(
-            ErrorCode::InvalidTopology,
-            "member path cannot be empty after removing directory slash",
-        ));
+        return Err(ZbError::new(ErrorCode::InvalidTopology, "member path cannot be empty after removing directory slash"));
     }
-    if trimmed
-        .split('/')
-        .any(|part| part.is_empty() || part == "." || part == "..")
-    {
+    if trimmed.split('/').any(|part| part.is_empty() || part == "." || part == "..") {
         return Err(ZbError::new(
             ErrorCode::InvalidTopology,
             format!("member path `{path}` contains empty or relative segments"),
@@ -65,19 +50,13 @@ pub fn validate_quine_members(self_path: &str, payloads: &[PayloadSpec]) -> ZbRe
         }
         let key = normalize_key(&payload.path);
         if seen.iter().any(|(s, _)| s == &key) {
-            return Err(ZbError::new(
-                ErrorCode::InvalidTopology,
-                format!("duplicate member path `{}`", payload.path),
-            ));
+            return Err(ZbError::new(ErrorCode::InvalidTopology, format!("duplicate member path `{}`", payload.path)));
         }
         for (existing, existing_is_dir) in &seen {
             if paths_conflict(existing, *existing_is_dir, &key, is_dir) {
                 return Err(ZbError::new(
                     ErrorCode::InvalidTopology,
-                    format!(
-                        "member path `{}` conflicts with existing path `{existing}`",
-                        payload.path
-                    ),
+                    format!("member path `{}` conflicts with existing path `{existing}`", payload.path),
                 ));
             }
         }
@@ -94,12 +73,6 @@ fn paths_conflict(a: &str, a_is_dir: bool, b: &str, b_is_dir: bool) -> bool {
     if a == b {
         return true;
     }
-    let (shorter, longer, shorter_is_dir) = if a.len() <= b.len() {
-        (a, b, a_is_dir)
-    } else {
-        (b, a, b_is_dir)
-    };
-    !shorter_is_dir
-        && longer.starts_with(shorter)
-        && longer.as_bytes().get(shorter.len()) == Some(&b'/')
+    let (shorter, longer, shorter_is_dir) = if a.len() <= b.len() { (a, b, a_is_dir) } else { (b, a, b_is_dir) };
+    !shorter_is_dir && longer.starts_with(shorter) && longer.as_bytes().get(shorter.len()) == Some(&b'/')
 }

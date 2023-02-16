@@ -28,7 +28,7 @@ async function publishJobDirectory(
             await writeFile(join(staging, file.fileName), file.bytes, { flag: "wx" });
         }
         await writeFile(join(staging, "manifest.json"), `${JSON.stringify({
-            schema: "zb.manifest/v1",
+            schema: "zb.manifest/v0",
             root,
             logicalNodeMap,
             artifacts: files.map(({ node, fileName, id, byteLength, digest }) => ({

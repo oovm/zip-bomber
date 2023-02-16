@@ -18,44 +18,40 @@ mod verify;
 
 use serde::{Deserialize, Serialize};
 use zb_types::{
-    ArtifactSet, CapabilitySet, GenerateReport, GenerateRequest, Outcome, VariantKind, ZbError,
-    ZbResult, ALL_VARIANTS,
+    ALL_VARIANTS, ArtifactSet, CapabilitySet, GenerateReport, GenerateRequest, Outcome, VariantKind, ZbError, ZbResult,
 };
 
 /// Re-export the Acorn block primitives so callers share one dependency path.
 pub use acorn_codec::{
     bit::{BitOrder, BitWriter},
     compression::deflate::{
-        write_block, write_fixed_block, write_stored_block, DeflateBlock, DeflateBlockPlan,
-        FixedBlock, StoredBlock, Symbol,
+        DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol, write_block, write_fixed_block, write_stored_block,
     },
 };
 pub use budget::TaskBudgetLedger;
 pub use budget_estimate::PlanBudgetEstimate;
 pub use crc::CrcPlan;
 pub use deflate::{
-    chain_repeats, decode_raw_deflate, encode_fixed_stream, encode_stored_stream, expand_skeleton,
-    validate_repeat, DeflatePlan, SkeletonOp,
+    DeflatePlan, SkeletonOp, chain_repeats, decode_raw_deflate, encode_fixed_stream, encode_stored_stream, expand_skeleton,
+    validate_repeat,
 };
-pub use emit::{emit_stored_archive, StoredMember};
-pub use layout::{archive_size, plan, resolve_profile, LayoutPlan, MemberLayout};
+pub use emit::{StoredMember, emit_stored_archive};
+pub use layout::{LayoutPlan, MemberLayout, archive_size, plan, resolve_profile};
 // `PlanSummary` / `plan_generate` are defined below (pipeline plan, not layout::plan).
 pub use templates::{
-    cox_core_program, encode_cox_core_deflate, interpret_lz_quine, is_self_reproducing,
-    list_quine_templates, LzOp, QuineTemplateMeta,
+    LzOp, QuineTemplateMeta, cox_core_program, encode_cox_core_deflate, interpret_lz_quine, is_self_reproducing,
+    list_quine_templates,
 };
 pub use variants::ArtifactBundle;
 pub use verify::{
-    cycle_edges_from_graph, minimum_byte_period, verify_artifact_set,
-    verify_artifact_set_for_request, verify_artifact_set_with_limits,
-    verify_artifact_set_with_spec, verify_zip_bytes, verify_zip_bytes_with_limits,
-    AcornZipCapability, VerificationReport,
+    AcornZipCapability, VerificationReport, cycle_edges_from_graph, minimum_byte_period, verify_artifact_set,
+    verify_artifact_set_for_request, verify_artifact_set_with_limits, verify_artifact_set_with_spec, verify_zip_bytes,
+    verify_zip_bytes_with_limits,
 };
 /// Re-export solver surface so generate callers share one dependency path.
 pub use zb_solver::{
-    crc32, crc32_affine_columns, solve, solve_rows, solve_with_cancel, u32_to_bits, Assignment,
-    BitMatrix, CancelToken, EquationId, Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK,
-    CRC32_POLY,
+    Assignment, BitMatrix, CRC32_CHECK, CRC32_POLY, CancelToken, EquationId, Gf2Solution, SolveOutcome, VariableId, crc32,
+    crc32_affine_columns, solve, solve_rows, solve_with_cancel, u32_to_bits,
 };
 
 /// List supported variant ids in stable order.
@@ -112,23 +108,15 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
         VariantKind::Bomb => {
             let empty = request.topology.nodes.is_empty() && request.topology.edges.is_empty();
             let summary = if empty {
-                format!(
-                    "bomb feasible under `{}` via default depth nesting (empty topology)",
-                    layout.profile_id
-                )
-            } else {
-                format!(
-                    "bomb feasible under `{}` via topology DAG (nodes={nodes} edges={edges})",
-                    layout.profile_id
-                )
+                format!("bomb feasible under `{}` via default depth nesting (empty topology)", layout.profile_id)
+            }
+            else {
+                format!("bomb feasible under `{}` via topology DAG (nodes={nodes} edges={edges})", layout.profile_id)
             };
             let budget_estimate = match variants::plan_bomb_budget(&request) {
                 Ok(est) => est,
                 Err(err) => {
-                    return Outcome::err(
-                        err.clone(),
-                        GenerateReport::failed(variant, crc, nodes, edges, &err),
-                    );
+                    return Outcome::err(err.clone(), GenerateReport::failed(variant, crc, nodes, edges, &err));
                 }
             };
             let plan = PlanSummary {
@@ -145,31 +133,19 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
         VariantKind::Quine => {
             let registered = templates::list_quine_templates(&layout.profile_id).len();
             if registered == 0 {
-                let err = ZbError::search_exhausted(format!(
-                    "quine plan: no templates for `{}`",
-                    layout.profile_id
-                ));
-                return Outcome::err(
-                    err.clone(),
-                    GenerateReport::failed(variant, crc, nodes, edges, &err),
-                );
+                let err = ZbError::search_exhausted(format!("quine plan: no templates for `{}`", layout.profile_id));
+                return Outcome::err(err.clone(), GenerateReport::failed(variant, crc, nodes, edges, &err));
             }
             let quine_layout = match variants::quine::plan_layout(&request) {
                 Ok(plan) => plan,
                 Err(err) => {
-                    return Outcome::err(
-                        err.clone(),
-                        GenerateReport::failed(variant, crc, nodes, edges, &err),
-                    );
+                    return Outcome::err(err.clone(), GenerateReport::failed(variant, crc, nodes, edges, &err));
                 }
             };
             let budget_estimate = match variants::plan_quine_budget(&request) {
                 Ok(est) => est,
                 Err(err) => {
-                    return Outcome::err(
-                        err.clone(),
-                        GenerateReport::failed(variant, crc, nodes, edges, &err),
-                    );
+                    return Outcome::err(err.clone(), GenerateReport::failed(variant, crc, nodes, edges, &err));
                 }
             };
             let plan = PlanSummary {
@@ -178,10 +154,7 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
                 profile: layout.profile_id,
                 summary: format!(
                     "quine via complete quoted prefix/core/suffix and shared CRC GF(2) solve (self=`{}` ordinary={} prefix={} suffix={})",
-                    quine_layout.self_member_path,
-                    quine_layout.ordinary_members,
-                    quine_layout.prefix_len,
-                    quine_layout.suffix_len
+                    quine_layout.fixed_point, quine_layout.ordinary_members, quine_layout.prefix_len, quine_layout.suffix_len
                 ),
                 warnings: vec![format!(
                     "prefix_budget_remaining={} suffix_budget_remaining={} compressed_payload_bytes={}",
@@ -191,21 +164,12 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
                 )],
                 budget_estimate: Some(budget_estimate),
             };
-            Outcome::ok(
-                plan,
-                GenerateReport::ok(variant, crc, nodes, edges, 0, 0, Vec::new()),
-            )
+            Outcome::ok(plan, GenerateReport::ok(variant, crc, nodes, edges, 0, 0, Vec::new()))
         }
         VariantKind::Loopy | VariantKind::Fractal => {
-            let err = ZbError::not_implemented(format!(
-                "plan for variant `{}` is not implemented yet",
-                variant.as_str()
-            ));
+            let err = ZbError::not_implemented(format!("plan for variant `{}` is not implemented yet", variant.as_str()));
             let mut report = GenerateReport::not_implemented(variant, crc, nodes, edges);
-            report.warnings.push(format!(
-                "profile `{}` resolved but variant driver is not planned",
-                layout.profile_id
-            ));
+            report.warnings.push(format!("profile `{}` resolved but variant driver is not planned", layout.profile_id));
             Outcome::err(err, report)
         }
     }
@@ -219,10 +183,7 @@ pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
 }
 
 /// [`generate`] with cooperative cancel for Quine / Loopy CRC solve steps.
-pub fn generate_with_cancel(
-    request: GenerateRequest,
-    cancel: &CancelToken,
-) -> Outcome<ArtifactSet> {
+pub fn generate_with_cancel(request: GenerateRequest, cancel: &CancelToken) -> Outcome<ArtifactSet> {
     if let Err(err) = cancel.check() {
         let report = GenerateReport::failed(
             request.variant,
@@ -268,25 +229,19 @@ pub fn generate_with_cancel(
             if bundle.report.status == zb_types::ReportStatus::NotImplemented {
                 Outcome::err(
                     ZbError::not_implemented(
-                        bundle
-                            .report
-                            .error_message
-                            .clone()
-                            .unwrap_or_else(|| "not implemented".to_string()),
+                        bundle.report.error_message.clone().unwrap_or_else(|| "not implemented".to_string()),
                     ),
                     bundle.report,
                 )
-            } else if bundle.report.status == zb_types::ReportStatus::Error {
+            }
+            else if bundle.report.status == zb_types::ReportStatus::Error {
                 let err = ZbError::new(
                     zb_types::ErrorCode::Internal,
-                    bundle
-                        .report
-                        .error_message
-                        .clone()
-                        .unwrap_or_else(|| "generate failed".to_string()),
+                    bundle.report.error_message.clone().unwrap_or_else(|| "generate failed".to_string()),
                 );
                 Outcome::err(err, bundle.report)
-            } else {
+            }
+            else {
                 Outcome::ok(bundle.artifacts, bundle.report)
             }
         }
@@ -299,12 +254,8 @@ pub fn generate_with_cancel(
 
 /// Build a JSON report string.
 pub fn report_json(report: &GenerateReport) -> ZbResult<String> {
-    serde_json::to_string_pretty(report).map_err(|err| {
-        ZbError::new(
-            zb_types::ErrorCode::Internal,
-            format!("failed to serialize report: {err}"),
-        )
-    })
+    serde_json::to_string_pretty(report)
+        .map_err(|err| ZbError::new(zb_types::ErrorCode::Internal, format!("failed to serialize report: {err}")))
 }
 
 /// Independent ZIP verification entry (structure only).
@@ -313,9 +264,6 @@ pub fn verify(set: &ArtifactSet) -> ZbResult<VerificationReport> {
 }
 
 /// Independent ZIP + optional cycle / period verification.
-pub fn verify_with_spec(
-    set: &ArtifactSet,
-    spec: &zb_types::VerificationSpec,
-) -> ZbResult<VerificationReport> {
+pub fn verify_with_spec(set: &ArtifactSet, spec: &zb_types::VerificationSpec) -> ZbResult<VerificationReport> {
     verify_artifact_set_with_spec(set, spec)
 }

@@ -1,8 +1,7 @@
 use zb_types::{
+    ALL_VARIANTS, ArchiveEdge, CapabilitySet, CapabilityStatus, EdgeRole, GenerateLimits, GenerateRequest, NodeId, PayloadSpec,
+    REQUEST_SCHEMA, TopologyClass, TopologyGraph, VariantKind, ZIP_LOOPY_TWO_NODE_GAPPED_V0, ZIP_PROFILE_V0, ZipProfile,
     decode_base64, encode_base64, generate_request_from_json, generate_request_to_json, zip_layout,
-    ArchiveEdge, CapabilitySet, CapabilityStatus, EdgeRole, GenerateLimits, GenerateRequest, NodeId,
-    PayloadSpec, TopologyClass, TopologyGraph, VariantKind, ZipProfile, ALL_VARIANTS,
-    REQUEST_SCHEMA_V2, ZIP_LOOPY_TWO_NODE_GAPPED_V1, ZIP_PROFILE_V0,
 };
 
 #[test]
@@ -14,16 +13,16 @@ fn all_variants_roundtrip_ids() {
 
 #[test]
 fn zip_convenience_aliases_parse() {
-    assert_eq!(VariantKind::parse("zipBomb"), Some(VariantKind::Bomb));
-    assert_eq!(VariantKind::parse("zipQuine"), Some(VariantKind::Quine));
-    assert_eq!(VariantKind::parse("zipLoopy"), Some(VariantKind::Loopy));
-    assert_eq!(VariantKind::parse("zipFractal"), Some(VariantKind::Fractal));
+    assert_eq!(VariantKind::parse("bomb"), Some(VariantKind::Bomb));
+    assert_eq!(VariantKind::parse("quine"), Some(VariantKind::Quine));
+    assert_eq!(VariantKind::parse("loopy"), Some(VariantKind::Loopy));
+    assert_eq!(VariantKind::parse("fractal"), Some(VariantKind::Fractal));
 }
 
 #[test]
 fn bare_request_uses_v2_schema_and_member_paths() {
     let req = GenerateRequest::bare(VariantKind::Quine);
-    assert_eq!(req.schema, REQUEST_SCHEMA_V2);
+    assert_eq!(req.schema, REQUEST_SCHEMA);
     assert_eq!(req.topology.edges.len(), 1);
     assert!(!req.topology.edges[0].member_path.is_empty());
 }
@@ -53,7 +52,7 @@ fn zip_profile_v0_and_limits_defaults() {
     assert_eq!(zip_layout::LFH_FIXED, 30);
     assert_eq!(zip_layout::CD_ENTRY_FIXED, 46);
     let gapped = ZipProfile::loopy_two_node_gapped_v1();
-    assert_eq!(gapped.id, ZIP_LOOPY_TWO_NODE_GAPPED_V1);
+    assert_eq!(gapped.id, ZIP_LOOPY_TWO_NODE_GAPPED_V0);
     assert!(gapped.allow_early_directory_gap);
     let limits = GenerateLimits::small_sample();
     assert_eq!(limits.max_nodes, 64);
@@ -66,37 +65,26 @@ fn zip_profile_v0_and_limits_defaults() {
 fn capability_matrix_profiles_and_verified_gates() {
     let caps = CapabilitySet::template_declared();
     assert_eq!(caps.entries.len(), 5);
-    let quine = caps
-        .entries
-        .iter()
-        .find(|e| e.variant == VariantKind::Quine)
-        .expect("quine row");
+    let quine = caps.entries.iter().find(|e| e.variant == VariantKind::Quine).expect("quine row");
     assert_eq!(quine.profile, ZIP_PROFILE_V0);
     assert_eq!(quine.status, CapabilityStatus::Verified);
     assert_eq!(quine.topology_class, TopologyClass::SelfLoop);
-    let loopy = caps
-        .entries
-        .iter()
-        .find(|e| e.variant == VariantKind::Loopy)
-        .expect("loopy row");
-    assert_eq!(loopy.profile, ZIP_LOOPY_TWO_NODE_GAPPED_V1);
+    let loopy = caps.entries.iter().find(|e| e.variant == VariantKind::Loopy).expect("loopy row");
+    assert_eq!(loopy.profile, ZIP_LOOPY_TWO_NODE_GAPPED_V0);
     assert_eq!(loopy.status, CapabilityStatus::Verified);
     let fractal_rec = caps
         .entries
         .iter()
-        .find(|e| {
-            e.variant == VariantKind::Fractal
-                && e.topology_class == TopologyClass::FractalRecursive
-        })
+        .find(|e| e.variant == VariantKind::Fractal && e.topology_class == TopologyClass::FractalRecursive)
         .expect("fractal recursive row");
-    assert_eq!(fractal_rec.profile, ZIP_LOOPY_TWO_NODE_GAPPED_V1);
+    assert_eq!(fractal_rec.profile, ZIP_LOOPY_TWO_NODE_GAPPED_V0);
     assert_eq!(fractal_rec.status, CapabilityStatus::Implemented);
 }
 
 #[test]
 fn wire_limits_use_decimal_u64_strings() {
     let json = r#"{
-        "schema":"zb.request/v2",
+        "schema":"zb.request/v0",
         "container":"zip",
         "variant":"quine",
         "limits":{
@@ -118,7 +106,7 @@ fn wire_limits_use_decimal_u64_strings() {
     assert!(!encoded.contains("\"max_decoded_bytes\""));
 
     let bad = r#"{
-        "schema":"zb.request/v2",
+        "schema":"zb.request/v0",
         "container":"zip",
         "variant":"quine",
         "limits":{"maxDecodedBytes":"01"}
@@ -127,12 +115,12 @@ fn wire_limits_use_decimal_u64_strings() {
 }
 
 #[test]
-fn wire_json_maps_self_member_path_and_base64_payloads() {
+fn wire_json_maps_fixed_point_and_base64_payloads() {
     let json = r#"{
-        "schema":"zb.request/v2",
+        "schema":"zb.request/v0",
         "container":"zip",
         "variant":"quine",
-        "selfMemberPath":"recurse/again.zip",
+        "fixedPoint":"recurse/again.zip",
         "payloads":[
             {"archivePath":"readme.txt","bytesBase64":"aGVsbG8="},
             {"archivePath":"empty/"}
@@ -148,10 +136,7 @@ fn wire_json_maps_self_member_path_and_base64_payloads() {
 
     let mut roundtrip = GenerateRequest::bare(VariantKind::Quine);
     roundtrip.topology = TopologyGraph::quine_self("release.zip", "recurse/again.zip");
-    roundtrip.payloads = vec![PayloadSpec {
-        path: "assets/说明.txt".into(),
-        bytes: "中文".as_bytes().to_vec(),
-    }];
+    roundtrip.payloads = vec![PayloadSpec { path: "assets/说明.txt".into(), bytes: "中文".as_bytes().to_vec() }];
     let encoded = generate_request_to_json(&roundtrip).expect("wire encode");
     let decoded = generate_request_from_json(&encoded).expect("wire roundtrip");
     assert_eq!(decoded.payloads[0].bytes, "中文".as_bytes());

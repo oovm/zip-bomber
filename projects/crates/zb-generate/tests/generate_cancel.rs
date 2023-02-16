@@ -1,5 +1,5 @@
-use zb_generate::{generate_with_cancel, CancelToken};
-use zb_types::{generate_request_from_json, ErrorCategory, GenerateRequest, VariantKind};
+use zb_generate::{CancelToken, generate_with_cancel};
+use zb_types::{ErrorCategory, GenerateRequest, VariantKind, generate_request_from_json};
 
 #[test]
 fn pre_cancelled_quine_generate_returns_cancelled() {
@@ -19,7 +19,7 @@ fn pre_cancelled_quine_generate_returns_cancelled() {
 fn pre_cancelled_finite_graph_generate_returns_cancelled() {
     let request = generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"fractal",
             "profile":"zip.profile/v0-stub",
             "graph":{"root":0,"mode":"finite","depth":"2","nodes":[
@@ -45,9 +45,9 @@ fn pre_cancelled_finite_graph_generate_returns_cancelled() {
 fn pre_cancelled_loopy_generate_returns_cancelled() {
     let request = generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":[
                 {"members":[
                     {"kind":"payload","path":"a.txt","bytes":"YWJj"},

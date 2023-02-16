@@ -134,7 +134,7 @@ export type PayloadSpec = {
 };
 
 export type GenerateRequest = {
-    schema: "zb.request/v2";
+    schema: "zb.request/v0";
     container: ContainerId;
     variant: VariantId;
     graph?: unknown;
@@ -143,7 +143,7 @@ export type GenerateRequest = {
     /** Opaque topology object for template stubs. */
     topology?: unknown;
     /** Quine self-reference member path. Maps onto the sole self-loop edge. */
-    selfMemberPath?: string;
+    fixedPoint?: string;
     /** Ordinary attachments and explicit directory entries. */
     payloads?: PayloadSpec[];
 };
@@ -202,10 +202,10 @@ export type ZipBomberApi = {
         input: ArtifactSet,
         spec?: VerificationSpec | GenerateRequest,
     ): Promise<Outcome<VerifySummary>>;
-    zipBomb(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
-    zipQuine(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
-    zipLoopy(options?: Partial<GenerateRequest> | ZipLoopySpec): Promise<Outcome<ArtifactSet>>;
-    zipFractal(options?: Partial<GenerateRequest> | ZipFractalSpec): Promise<Outcome<ArtifactSet>>;
+    bomb(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
+    quine(options?: Partial<GenerateRequest>): Promise<Outcome<ArtifactSet>>;
+    loopy(options?: Partial<GenerateRequest> | LoopySpec): Promise<Outcome<ArtifactSet>>;
+    fractal(options?: Partial<GenerateRequest> | FractalSpec): Promise<Outcome<ArtifactSet>>;
     dispose(): Promise<void>;
 };
 
@@ -230,9 +230,9 @@ export type GenerateLimits = {
 };
 export type BuildOptions = { profile?: string; limits?: Partial<GenerateLimits> };
 declare const graphSpecBrand: unique symbol;
-export type ZipLoopySpec = { readonly variant: "loopy"; readonly [graphSpecBrand]: true };
-export type ZipFractalSpec = { readonly variant: "fractal"; readonly [graphSpecBrand]: true };
-export type GraphSpec = ZipLoopySpec | ZipFractalSpec;
+export type LoopySpec = { readonly variant: "loopy"; readonly [graphSpecBrand]: true };
+export type FractalSpec = { readonly variant: "fractal"; readonly [graphSpecBrand]: true };
+export type GraphSpec = LoopySpec | FractalSpec;
 export type NodeOptions = { label?: string; payloads?: readonly PayloadSpec[] };
 export type ArchiveLink<N> = { archivePath: string; to: N; role?: string };
 export interface LoopyNode {
@@ -246,13 +246,13 @@ export interface FractalNode {
     link(edge: ArchiveLink<FractalNode>): this;
     terminal(options: { payloads: readonly PayloadSpec[] }): this;
 }
-export interface ZipLoopyBuilder {
+export interface LoopyBuilder {
     node(options?: NodeOptions): LoopyNode;
     root(node: LoopyNode): this;
-    build(options?: BuildOptions): BuildOutcome<ZipLoopySpec>;
+    build(options?: BuildOptions): BuildOutcome<LoopySpec>;
 }
-export interface ZipFractalBuilder {
+export interface FractalBuilder {
     node(options?: NodeOptions): FractalNode;
     root(node: FractalNode): this;
-    build(options: BuildOptions & ({mode: "recursive"} | {mode: "finite"; depth: DecimalU64})): BuildOutcome<ZipFractalSpec>;
+    build(options: BuildOptions & ({mode: "recursive"} | {mode: "finite"; depth: DecimalU64})): BuildOutcome<FractalSpec>;
 }

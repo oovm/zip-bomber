@@ -11,18 +11,14 @@ mod crc;
 mod gf2;
 mod problem;
 
-pub use cancel::{never as never_cancel, CancelToken};
-pub use crc::{
-    crc32, crc32_affine_columns, crc32_shared_columns, u32_to_bits, CrcByteSlot, CRC32_CHECK,
-    CRC32_POLY,
-};
-pub use gf2::{solve, solve_rows, solve_rows_with_cancel, solve_with_cancel, BitMatrix, Gf2Solution};
+pub use cancel::{CancelToken, never as never_cancel};
+pub use crc::{CRC32_CHECK, CRC32_POLY, CrcByteSlot, crc32, crc32_affine_columns, crc32_shared_columns, u32_to_bits};
+pub use gf2::{BitMatrix, Gf2Solution, solve, solve_rows, solve_rows_with_cancel, solve_with_cancel};
 pub use problem::{
-    checksum_from_shared_slots, crc_identity_residual_problem, shared_crc_problem,
-    solve_crc_identity_blocks, solve_crc_identity_blocks_with_cancel, solve_problem,
-    solve_problem_with_cancel, solve_shared_crc_with_cancel, ByteEquation, ByteExpr, ByteTerm,
-    ChecksumAlgorithm, ChecksumConstraint, ConstraintProblem, LinearEquation, SharedCrcArchive,
-    SolveEvidence, SolveOutcome, SolverBudget,
+    ByteEquation, ByteExpr, ByteTerm, ChecksumAlgorithm, ChecksumConstraint, ConstraintProblem, LinearEquation,
+    SharedCrcArchive, SolveEvidence, SolveOutcome, SolverBudget, checksum_from_shared_slots, crc_identity_residual_problem,
+    shared_crc_problem, solve_crc_identity_blocks, solve_crc_identity_blocks_with_cancel, solve_problem,
+    solve_problem_with_cancel, solve_shared_crc_with_cancel,
 };
 
 /// Stable variable identity inside a frozen skeleton problem.
@@ -42,8 +38,6 @@ pub struct Assignment {
 
 impl From<Gf2Solution> for Assignment {
     fn from(value: Gf2Solution) -> Self {
-        Self {
-            bits: value.assignment,
-        }
+        Self { bits: value.assignment }
     }
 }

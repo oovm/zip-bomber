@@ -1,14 +1,11 @@
-use zb_generate::{chain_repeats, encode_stored_stream, expand_skeleton, SkeletonOp};
+use zb_generate::{SkeletonOp, chain_repeats, encode_stored_stream, expand_skeleton};
 
 #[test]
 fn expand_repeat_with_overlap() {
     let out = expand_skeleton(&[
         SkeletonOp::StoredLiteral(b'a'),
         SkeletonOp::StoredLiteral(b'b'),
-        SkeletonOp::Repeat {
-            length: 4,
-            distance: 2,
-        },
+        SkeletonOp::Repeat { length: 4, distance: 2 },
         SkeletonOp::EndOfBlock,
     ])
     .unwrap();
@@ -17,11 +14,7 @@ fn expand_repeat_with_overlap() {
 
 #[test]
 fn reject_short_distance() {
-    let err = expand_skeleton(&[SkeletonOp::Repeat {
-        length: 3,
-        distance: 1,
-    }])
-    .unwrap_err();
+    let err = expand_skeleton(&[SkeletonOp::Repeat { length: 3, distance: 1 }]).unwrap_err();
     assert!(err.message.contains("exceeds emitted"));
 }
 

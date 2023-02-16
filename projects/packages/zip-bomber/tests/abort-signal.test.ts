@@ -5,7 +5,7 @@ import type { GenerateRequest } from "../src/types.js";
 import { createZipBomber, loadZipBomberNode } from "../src/node/index.js";
 
 const request: GenerateRequest = {
-    schema: "zb.request/v2",
+    schema: "zb.request/v0",
     container: "zip",
     variant: "quine",
 };
@@ -34,7 +34,7 @@ test("abort notifies the cancellable generate hook", async () => {
                         exitCode: 1,
                         ok: false,
                         reportJson: JSON.stringify({
-                            schema: "zb.report/v1",
+                            schema: "zb.report/v0",
                             container: "zip",
                             variant: "quine",
                             status: "error",

@@ -5,10 +5,10 @@ import { createZipBomber as createNode, loadZipBomberNode } from "../src/node/in
 import { createZipBomber as createWasm } from "../src/wasm/index.js";
 
 const attachmentRequest = {
-    schema: "zb.request/v2" as const,
+    schema: "zb.request/v0" as const,
     container: "zip" as const,
     variant: "quine" as const,
-    selfMemberPath: "recurse/again.zip",
+    fixedPoint: "recurse/again.zip",
     payloads: [
         { archivePath: "assets/" },
         {
@@ -46,8 +46,8 @@ test("Node and WASM attachment Quine share bytes and restore payloads", async ()
     const wasm = await createWasm();
     try {
         const [nativeResult, wasmResult] = await Promise.all([
-            node.zipQuine(attachmentRequest),
-            wasm.zipQuine(attachmentRequest),
+            node.quine(attachmentRequest),
+            wasm.quine(attachmentRequest),
         ]);
         assert.ok(nativeResult.ok, JSON.stringify(nativeResult));
         assert.ok(wasmResult.ok, JSON.stringify(wasmResult));

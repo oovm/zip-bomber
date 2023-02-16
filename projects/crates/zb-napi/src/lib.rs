@@ -5,12 +5,12 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use zb_generate::{
-    capabilities, generate_with_cancel, list_variants, plan_generate, report_json,
-    verify_artifact_set_for_request, verify_artifact_set_with_spec, verify_zip_bytes, CancelToken,
+    CancelToken, capabilities, generate_with_cancel, list_variants, plan_generate, report_json,
+    verify_artifact_set_for_request, verify_artifact_set_with_spec, verify_zip_bytes,
 };
 use zb_types::{
-    artifact_set_from_json, generate_request_from_json, verification_spec_from_json, GenerateRequest,
-    Outcome, ReportStatus, VariantKind,
+    GenerateRequest, Outcome, ReportStatus, VariantKind, artifact_set_from_json, generate_request_from_json,
+    verification_spec_from_json,
 };
 
 /// N-API generate response.
@@ -69,10 +69,7 @@ pub struct CapabilityRow {
 /// List supported variant ids.
 #[napi]
 pub fn list_variants_napi() -> Vec<String> {
-    list_variants()
-        .iter()
-        .map(|v| v.as_str().to_string())
-        .collect()
+    list_variants().iter().map(|v| v.as_str().to_string()).collect()
 }
 
 /// Capability matrix snapshot.
@@ -146,13 +143,9 @@ pub struct VerifyResponse {
 fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
     match plan_generate(request) {
         Outcome::Ok { value, report, .. } => {
-            let report_json =
-                report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
+            let report_json = report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
             let budget_estimate_json = match value.budget_estimate.as_ref() {
-                Some(estimate) => Some(
-                    serde_json::to_string(estimate)
-                        .map_err(|err| Error::from_reason(err.to_string()))?,
-                ),
+                Some(estimate) => Some(serde_json::to_string(estimate).map_err(|err| Error::from_reason(err.to_string()))?),
                 None => None,
             };
             Ok(PlanResponse {
@@ -169,8 +162,7 @@ fn plan_response(request: GenerateRequest) -> Result<PlanResponse> {
             })
         }
         Outcome::Err { error, report, .. } => {
-            let report_json =
-                report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
+            let report_json = report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
             let exit_code = match report.status {
                 ReportStatus::Ok => 0,
                 ReportStatus::NotImplemented => 2,
@@ -196,14 +188,10 @@ fn generate_response(request: GenerateRequest) -> Result<GenerateResponse> {
     generate_response_with_cancel(request, &CancelToken::new())
 }
 
-fn generate_response_with_cancel(
-    request: GenerateRequest,
-    cancel: &CancelToken,
-) -> Result<GenerateResponse> {
+fn generate_response_with_cancel(request: GenerateRequest, cancel: &CancelToken) -> Result<GenerateResponse> {
     match generate_with_cancel(request, cancel) {
         Outcome::Ok { value, report, .. } => {
-            let report_json =
-                report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
+            let report_json = report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
             let exit_code = match report.status {
                 ReportStatus::Ok => 0,
                 ReportStatus::NotImplemented => 2,
@@ -240,8 +228,7 @@ fn generate_response_with_cancel(
             })
         }
         Outcome::Err { error, report, .. } => {
-            let report_json =
-                report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
+            let report_json = report_json(&report).map_err(|err| Error::from_reason(err.to_string()))?;
             let exit_code = match report.status {
                 ReportStatus::Ok => 0,
                 ReportStatus::NotImplemented => 2,
@@ -266,26 +253,21 @@ fn generate_response_with_cancel(
 /// Plan a bare variant without emitting bytes.
 #[napi]
 pub fn plan_variant(variant: String) -> Result<PlanResponse> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
+    let kind = VariantKind::parse(&variant).ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
     plan_response(GenerateRequest::bare(kind))
 }
 
-/// Plan from a full `zb.request/v2` JSON wire document.
+/// Plan from a full `zb.request/v0` JSON wire document.
 #[napi]
 pub fn plan_request_json(request_json: String) -> Result<PlanResponse> {
-    let request = generate_request_from_json(&request_json)
-        .map_err(|err| Error::from_reason(err.to_string()))?;
+    let request = generate_request_from_json(&request_json).map_err(|err| Error::from_reason(err.to_string()))?;
     plan_response(request)
 }
 
-fn verify_response(
-    result: zb_types::ZbResult<zb_generate::VerificationReport>,
-) -> Result<VerifyResponse> {
+fn verify_response(result: zb_types::ZbResult<zb_generate::VerificationReport>) -> Result<VerifyResponse> {
     match result {
         Ok(report) => {
-            let report_json = serde_json::to_string_pretty(&report)
-                .map_err(|err| Error::from_reason(err.to_string()))?;
+            let report_json = serde_json::to_string_pretty(&report).map_err(|err| Error::from_reason(err.to_string()))?;
             Ok(VerifyResponse {
                 exit_code: if report.ok { 0 } else { 1 },
                 ok: report.ok,
@@ -297,8 +279,7 @@ fn verify_response(
         }
         Err(error) => Ok(VerifyResponse {
             exit_code: match error.code {
-                zb_types::ErrorCode::NotImplemented
-                | zb_types::ErrorCode::VerificationCapabilityMissing => 2,
+                zb_types::ErrorCode::NotImplemented | zb_types::ErrorCode::VerificationCapabilityMissing => 2,
                 zb_types::ErrorCode::PeriodMismatch => 1,
                 _ => 1,
             },
@@ -319,48 +300,36 @@ pub fn verify_zip_bytes_napi(bytes: Buffer) -> Result<VerifyResponse> {
 
 /// Verify a full artifact set JSON, optionally with a cycle [`VerificationSpec`] JSON.
 #[napi]
-pub fn verify_artifact_set_json(
-    set_json: String,
-    spec_json: Option<String>,
-) -> Result<VerifyResponse> {
-    let set = artifact_set_from_json(&set_json)
-        .map_err(|err| Error::from_reason(err.to_string()))?;
+pub fn verify_artifact_set_json(set_json: String, spec_json: Option<String>) -> Result<VerifyResponse> {
+    let set = artifact_set_from_json(&set_json).map_err(|err| Error::from_reason(err.to_string()))?;
     match spec_json {
         Some(spec) if !spec.trim().is_empty() => {
-            let spec = verification_spec_from_json(&spec)
-                .map_err(|err| Error::from_reason(err.to_string()))?;
+            let spec = verification_spec_from_json(&spec).map_err(|err| Error::from_reason(err.to_string()))?;
             verify_response(verify_artifact_set_with_spec(&set, &spec))
         }
         _ => verify_response(zb_generate::verify_artifact_set(&set)),
     }
 }
 
-/// Verify an artifact set using edges / period inferred from a `zb.request/v2` JSON.
+/// Verify an artifact set using edges / period inferred from a `zb.request/v0` JSON.
 #[napi]
-pub fn verify_artifact_set_for_request_json(
-    set_json: String,
-    request_json: String,
-) -> Result<VerifyResponse> {
-    let set = artifact_set_from_json(&set_json)
-        .map_err(|err| Error::from_reason(err.to_string()))?;
-    let request = generate_request_from_json(&request_json)
-        .map_err(|err| Error::from_reason(err.to_string()))?;
+pub fn verify_artifact_set_for_request_json(set_json: String, request_json: String) -> Result<VerifyResponse> {
+    let set = artifact_set_from_json(&set_json).map_err(|err| Error::from_reason(err.to_string()))?;
+    let request = generate_request_from_json(&request_json).map_err(|err| Error::from_reason(err.to_string()))?;
     verify_response(verify_artifact_set_for_request(&set, &request))
 }
 
 /// Generate an archive for a lowercase variant id using a bare default topology.
 #[napi]
 pub fn generate_variant(variant: String) -> Result<GenerateResponse> {
-    let kind = VariantKind::parse(&variant)
-        .ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
+    let kind = VariantKind::parse(&variant).ok_or_else(|| Error::from_reason(format!("unknown variant `{variant}`")))?;
     generate_response(GenerateRequest::bare(kind))
 }
 
-/// Generate from a full `zb.request/v2` JSON wire document.
+/// Generate from a full `zb.request/v0` JSON wire document.
 #[napi]
 pub fn generate_request_json(request_json: String) -> Result<GenerateResponse> {
-    let request = generate_request_from_json(&request_json)
-        .map_err(|err| Error::from_reason(err.to_string()))?;
+    let request = generate_request_from_json(&request_json).map_err(|err| Error::from_reason(err.to_string()))?;
     generate_response(request)
 }
 
@@ -375,9 +344,7 @@ impl GenerateCancel {
     /// Fresh flag. Call [`Self::cancel`] from the JavaScript thread.
     #[napi(constructor)]
     pub fn new() -> Self {
-        Self {
-            token: CancelToken::new(),
-        }
+        Self { token: CancelToken::new() }
     }
 
     /// Request cancellation. Idempotent.
@@ -389,7 +356,7 @@ impl GenerateCancel {
 
 /// One JSON generate scheduled on the libuv thread pool.
 pub struct GenerateJsonTask {
-    /// `zb.request/v2` JSON document.
+    /// `zb.request/v0` JSON document.
     request_json: String,
     /// Cooperative cancel flag cloned from [`GenerateCancel`].
     cancel: CancelToken,
@@ -401,8 +368,7 @@ impl Task for GenerateJsonTask {
     type JsValue = GenerateResponse;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        let request = generate_request_from_json(&self.request_json)
-            .map_err(|err| Error::from_reason(err.to_string()))?;
+        let request = generate_request_from_json(&self.request_json).map_err(|err| Error::from_reason(err.to_string()))?;
         generate_response_with_cancel(request, &self.cancel)
     }
 
@@ -413,12 +379,6 @@ impl Task for GenerateJsonTask {
 
 /// Generate on the libuv thread pool so `AbortSignal` can flip [`GenerateCancel`].
 #[napi]
-pub fn generate_request_json_cancellable(
-    request_json: String,
-    cancel: &GenerateCancel,
-) -> AsyncTask<GenerateJsonTask> {
-    AsyncTask::new(GenerateJsonTask {
-        request_json,
-        cancel: cancel.token.clone(),
-    })
+pub fn generate_request_json_cancellable(request_json: String, cancel: &GenerateCancel) -> AsyncTask<GenerateJsonTask> {
+    AsyncTask::new(GenerateJsonTask { request_json, cancel: cancel.token.clone() })
 }

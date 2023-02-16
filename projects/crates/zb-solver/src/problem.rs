@@ -3,10 +3,12 @@
 //! Layout / codec stay in `zb-generate`. This module only validates affine bit
 //! equations, enforces solver budgets, and delegates elimination to [`crate::gf2`].
 
-use crate::cancel::CancelToken;
-use crate::crc::{crc32, crc32_shared_columns, CrcByteSlot};
-use crate::gf2::{solve_with_cancel, BitMatrix, Gf2Solution};
-use crate::{Assignment, EquationId, VariableId};
+use crate::{
+    Assignment, EquationId, VariableId,
+    cancel::CancelToken,
+    crc::{CrcByteSlot, crc32, crc32_shared_columns},
+    gf2::{BitMatrix, Gf2Solution, solve_with_cancel},
+};
 use zb_types::{ErrorCategory, ErrorCode, ZbError, ZbResult};
 
 /// Per-problem resource ceilings checked before matrix construction.
@@ -22,11 +24,7 @@ pub struct SolverBudget {
 
 impl Default for SolverBudget {
     fn default() -> Self {
-        Self {
-            max_variables: 4096,
-            max_equations: 8192,
-            max_matrix_bits: 1 << 24,
-        }
+        Self { max_variables: 4096, max_equations: 8192, max_matrix_bits: 1 << 24 }
     }
 }
 
@@ -170,11 +168,7 @@ pub enum SolveOutcome {
 impl SolveOutcome {
     /// Wrap a successful [`Gf2Solution`] with evidence metadata.
     pub fn from_gf2(sol: Gf2Solution, evidence: SolveEvidence) -> Self {
-        Self::Sat {
-            unique: sol.unique,
-            assignment: Assignment::from(sol),
-            evidence,
-        }
+        Self::Sat { unique: sol.unique, assignment: Assignment::from(sol), evidence }
     }
 }
 
@@ -184,20 +178,13 @@ impl ConstraintProblem {
         if self.variable_count > self.budget.max_variables {
             return Err(ZbError::new(
                 ErrorCode::ResourceLimited,
-                format!(
-                    "variable_count {} exceeds budget.max_variables {}",
-                    self.variable_count, self.budget.max_variables
-                ),
+                format!("variable_count {} exceeds budget.max_variables {}", self.variable_count, self.budget.max_variables),
             ));
         }
         if self.equations.len() as u32 > self.budget.max_equations {
             return Err(ZbError::new(
                 ErrorCode::ResourceLimited,
-                format!(
-                    "equation count {} exceeds budget.max_equations {}",
-                    self.equations.len(),
-                    self.budget.max_equations
-                ),
+                format!("equation count {} exceeds budget.max_equations {}", self.equations.len(), self.budget.max_equations),
             ));
         }
         let cols = self.variable_count as u64;
@@ -206,10 +193,7 @@ impl ConstraintProblem {
         if cells > self.budget.max_matrix_bits {
             return Err(ZbError::new(
                 ErrorCode::ResourceLimited,
-                format!(
-                    "matrix cells {cells} exceed budget.max_matrix_bits {}",
-                    self.budget.max_matrix_bits
-                ),
+                format!("matrix cells {cells} exceed budget.max_matrix_bits {}", self.budget.max_matrix_bits),
             ));
         }
         for eq in &self.equations {
@@ -217,27 +201,17 @@ impl ConstraintProblem {
                 if var.0 >= self.variable_count {
                     return Err(ZbError::new(
                         ErrorCode::InvalidTopology,
-                        format!(
-                            "equation {:?} references variable {} outside 0..{}",
-                            eq.id, var.0, self.variable_count
-                        ),
+                        format!("equation {:?} references variable {} outside 0..{}", eq.id, var.0, self.variable_count),
                     ));
                 }
             }
         }
         let checksum_rows = self.checksums.len().saturating_mul(32);
-        let total_equations = self
-            .equations
-            .len()
-            .saturating_add(self.byte_equations.len())
-            .saturating_add(checksum_rows);
+        let total_equations = self.equations.len().saturating_add(self.byte_equations.len()).saturating_add(checksum_rows);
         if total_equations as u32 > self.budget.max_equations {
             return Err(ZbError::new(
                 ErrorCode::ResourceLimited,
-                format!(
-                    "equation count {total_equations} exceeds budget.max_equations {}",
-                    self.budget.max_equations
-                ),
+                format!("equation count {total_equations} exceeds budget.max_equations {}", self.budget.max_equations),
             ));
         }
         for eq in &self.byte_equations {
@@ -246,9 +220,7 @@ impl ConstraintProblem {
                     let last = index
                         .checked_mul(8)
                         .and_then(|base| base.checked_add(7))
-                        .ok_or_else(|| {
-                            ZbError::resource_limited("byte variable bit range overflow")
-                        })?;
+                        .ok_or_else(|| ZbError::resource_limited("byte variable bit range overflow"))?;
                     if last >= self.variable_count {
                         return Err(ZbError::new(
                             ErrorCode::InvalidTopology,
@@ -297,34 +269,20 @@ fn reduce_byte_equations(
             }
         }
     }
-    let mut nodes: Vec<ByteClass> = (0..max_var)
-        .map(|index| ByteClass {
-            parent: index,
-            constant: None,
-        })
-        .collect();
+    let mut nodes: Vec<ByteClass> = (0..max_var).map(|index| ByteClass { parent: index, constant: None }).collect();
     let mut links = Vec::new();
     for eq in equations {
         match (eq.left, eq.right) {
             (ByteTerm::Constant(left), ByteTerm::Constant(right)) => {
                 if left != right {
-                    return Err((
-                        eq.id,
-                        format!("byte constants {left:#04x} and {right:#04x} differ"),
-                    ));
+                    return Err((eq.id, format!("byte constants {left:#04x} and {right:#04x} differ")));
                 }
             }
-            (ByteTerm::Variable(var), ByteTerm::Constant(value))
-            | (ByteTerm::Constant(value), ByteTerm::Variable(var)) => {
+            (ByteTerm::Variable(var), ByteTerm::Constant(value)) | (ByteTerm::Constant(value), ByteTerm::Variable(var)) => {
                 let root = find_byte(&mut nodes, var);
                 match nodes[root as usize].constant {
                     Some((existing, _)) if existing != value => {
-                        return Err((
-                            eq.id,
-                            format!(
-                                "byte variable {var} is bound to {existing:#04x} and {value:#04x}"
-                            ),
-                        ));
+                        return Err((eq.id, format!("byte variable {var} is bound to {existing:#04x} and {value:#04x}")));
                     }
                     Some(_) => {}
                     None => nodes[root as usize].constant = Some((value, eq.id)),
@@ -341,10 +299,7 @@ fn reduce_byte_equations(
                 }
                 match (nodes[a as usize].constant, nodes[b as usize].constant) {
                     (Some((x, _)), Some((y, _))) if x != y => {
-                        return Err((
-                            eq.id,
-                            format!("byte copies are bound to {x:#04x} and {y:#04x}"),
-                        ));
+                        return Err((eq.id, format!("byte copies are bound to {x:#04x} and {y:#04x}")));
                     }
                     (None, Some(value)) => nodes[a as usize].constant = Some(value),
                     _ => {}
@@ -362,20 +317,12 @@ fn reduce_byte_equations(
         .iter()
         .enumerate()
         .filter(|(index, node)| node.parent == *index as u32)
-        .filter_map(|(index, node)| {
-            node.constant
-                .map(|(value, id)| (index as u32, value, id))
-        })
+        .filter_map(|(index, node)| node.constant.map(|(value, id)| (index as u32, value, id)))
         .collect();
     Ok((bindings, links))
 }
 
-fn push_linear(
-    rows: &mut Vec<(EquationId, Vec<bool>, bool)>,
-    cols: usize,
-    id: EquationId,
-    variables: &[(usize, bool)],
-) {
+fn push_linear(rows: &mut Vec<(EquationId, Vec<bool>, bool)>, cols: usize, id: EquationId, variables: &[(usize, bool)]) {
     let mut bits = vec![false; cols];
     let mut rhs = false;
     for &(index, value) in variables {
@@ -385,38 +332,19 @@ fn push_linear(
     rows.push((id, bits, rhs));
 }
 
-fn byte_rows(
-    problem: &ConstraintProblem,
-) -> Result<Vec<(EquationId, Vec<bool>, bool)>, SolveOutcome> {
-    let (bindings, links) = reduce_byte_equations(&problem.byte_equations).map_err(
-        |(id, message)| SolveOutcome::Unsat {
-            message,
-            conflicting_equation: Some(id),
-        },
-    )?;
+fn byte_rows(problem: &ConstraintProblem) -> Result<Vec<(EquationId, Vec<bool>, bool)>, SolveOutcome> {
+    let (bindings, links) = reduce_byte_equations(&problem.byte_equations)
+        .map_err(|(id, message)| SolveOutcome::Unsat { message, conflicting_equation: Some(id) })?;
     let cols = problem.variable_count as usize;
     let mut rows = Vec::new();
     for (index, value, id) in bindings {
         for bit in 0..8 {
-            push_linear(
-                &mut rows,
-                cols,
-                id,
-                &[(index as usize * 8 + bit, (value >> bit) & 1 == 1)],
-            );
+            push_linear(&mut rows, cols, id, &[(index as usize * 8 + bit, (value >> bit) & 1 == 1)]);
         }
     }
     for (child, parent, id) in links {
         for bit in 0..8 {
-            push_linear(
-                &mut rows,
-                cols,
-                id,
-                &[
-                    (child as usize * 8 + bit, false),
-                    (parent as usize * 8 + bit, false),
-                ],
-            );
+            push_linear(&mut rows, cols, id, &[(child as usize * 8 + bit, false), (parent as usize * 8 + bit, false)]);
         }
     }
     Ok(rows)
@@ -457,7 +385,8 @@ fn flatten_byte(expr: &ByteExpr) -> Result<(u8, Vec<u32>), SolveOutcome> {
             ByteExpr::Variable(index) => {
                 if let Some(pos) = vars.iter().position(|existing| *existing == *index) {
                     vars.swap_remove(pos);
-                } else {
+                }
+                else {
                     vars.push(*index);
                 }
             }
@@ -476,10 +405,7 @@ fn byte_var_in_range(problem: &ConstraintProblem, index: u32) -> Result<(), Solv
     match last {
         Some(last) if last < problem.variable_count => Ok(()),
         _ => Err(SolveOutcome::InvalidProblem {
-            message: format!(
-                "byte variable {index} needs bits {index}*8..{index}*8+8 inside 0..{}",
-                problem.variable_count
-            ),
+            message: format!("byte variable {index} needs bits {index}*8..{index}*8+8 inside 0..{}", problem.variable_count),
         }),
     }
 }
@@ -496,9 +422,7 @@ fn eval_byte(expr: &ByteExpr, bits: &[bool]) -> Result<u8, SolveOutcome> {
     Ok(value)
 }
 
-fn checksum_rows(
-    problem: &ConstraintProblem,
-) -> Result<Vec<(EquationId, Vec<bool>, bool)>, SolveOutcome> {
+fn checksum_rows(problem: &ConstraintProblem) -> Result<Vec<(EquationId, Vec<bool>, bool)>, SolveOutcome> {
     let cols = problem.variable_count as usize;
     let mut rows = Vec::new();
     for constraint in &problem.checksums {
@@ -526,17 +450,8 @@ fn checksum_rows(
             }
             // One template for this offset. XOR participants share the same CRC
             // bit columns (duplicate offsets are illegal in crc32_shared_columns).
-            let (_, columns) = crc32_shared_columns(
-                &zeros,
-                &[CrcByteSlot {
-                    offset: *offset,
-                    variable: 0,
-                }],
-                1,
-            )
-            .map_err(|err| SolveOutcome::InternalError {
-                message: err.message,
-            })?;
+            let (_, columns) = crc32_shared_columns(&zeros, &[CrcByteSlot { offset: *offset, variable: 0 }], 1)
+                .map_err(|err| SolveOutcome::InternalError { message: err.message })?;
             for var in vars {
                 for bit in 0..8 {
                     influence[*var as usize * 8 + bit] ^= columns[bit];
@@ -630,19 +545,14 @@ pub fn crc_identity_residual_problem(
     problem_digest: Option<String>,
 ) -> Result<ConstraintProblem, SolveOutcome> {
     if variable_bits == 0 {
-        return Err(SolveOutcome::InvalidProblem {
-            message: "variable_bits must be positive".into(),
-        });
+        return Err(SolveOutcome::InvalidProblem { message: "variable_bits must be positive".into() });
     }
     let mut equations = Vec::with_capacity(blocks.len().saturating_mul(32));
     let mut eq_id = 0u32;
     for (block_index, (constant, columns)) in blocks.iter().enumerate() {
         if columns.len() != variable_bits as usize {
             return Err(SolveOutcome::InvalidProblem {
-                message: format!(
-                    "CRC block {block_index} has {} columns, expected {variable_bits}",
-                    columns.len()
-                ),
+                message: format!("CRC block {block_index} has {} columns, expected {variable_bits}", columns.len()),
             });
         }
         let col_base = block_index * 32;
@@ -665,18 +575,15 @@ pub fn crc_identity_residual_problem(
             let identity = VariableId((col_base + row) as u32);
             if let Some(pos) = vars.iter().position(|v| *v == identity) {
                 vars.remove(pos);
-            } else {
+            }
+            else {
                 vars.push(identity);
             }
-            equations.push(LinearEquation {
-                id: EquationId(eq_id),
-                variables: vars,
-                rhs: (constant >> row) & 1 != 0,
-            });
+            equations.push(LinearEquation { id: EquationId(eq_id), variables: vars, rhs: (constant >> row) & 1 != 0 });
             eq_id += 1;
         }
     }
-        Ok(ConstraintProblem {
+    Ok(ConstraintProblem {
         variable_count: variable_bits,
         equations,
         byte_equations: Vec::new(),
@@ -698,26 +605,15 @@ pub struct SharedCrcArchive<'a> {
 }
 
 /// Build a [`ChecksumConstraint`] for `CRC32(message) = target_word`.
-pub fn checksum_from_shared_slots(
-    id: EquationId,
-    archive: SharedCrcArchive<'_>,
-) -> Result<ChecksumConstraint, SolveOutcome> {
-    let mut message: Vec<ByteExpr> = archive
-        .bytes
-        .iter()
-        .map(|&b| ByteExpr::Constant(b))
-        .collect();
+pub fn checksum_from_shared_slots(id: EquationId, archive: SharedCrcArchive<'_>) -> Result<ChecksumConstraint, SolveOutcome> {
+    let mut message: Vec<ByteExpr> = archive.bytes.iter().map(|&b| ByteExpr::Constant(b)).collect();
     let mut seen = vec![false; archive.bytes.len()];
     for slot in archive.slots {
         if slot.offset >= archive.bytes.len() {
-            return Err(SolveOutcome::InvalidProblem {
-                message: format!("CRC slot offset {} out of range", slot.offset),
-            });
+            return Err(SolveOutcome::InvalidProblem { message: format!("CRC slot offset {} out of range", slot.offset) });
         }
         if seen[slot.offset] {
-            return Err(SolveOutcome::InvalidProblem {
-                message: format!("duplicate CRC slot offset {}", slot.offset),
-            });
+            return Err(SolveOutcome::InvalidProblem { message: format!("duplicate CRC slot offset {}", slot.offset) });
         }
         seen[slot.offset] = true;
         message[slot.offset] = ByteExpr::Variable(slot.variable as u32);
@@ -743,40 +639,28 @@ pub fn shared_crc_problem(
     problem_digest: Option<String>,
 ) -> Result<ConstraintProblem, SolveOutcome> {
     if archives.is_empty() {
-        return Err(SolveOutcome::InvalidProblem {
-            message: "shared CRC problem requires at least one archive".into(),
-        });
+        return Err(SolveOutcome::InvalidProblem { message: "shared CRC problem requires at least one archive".into() });
     }
     if variable_bytes == 0 {
-        return Err(SolveOutcome::InvalidProblem {
-            message: "variable_bytes must be positive".into(),
-        });
+        return Err(SolveOutcome::InvalidProblem { message: "variable_bytes must be positive".into() });
     }
     let mut checksums = Vec::with_capacity(archives.len());
     for (index, archive) in archives.iter().enumerate() {
         for slot in archive.slots {
             if slot.variable as u32 >= variable_bytes {
                 return Err(SolveOutcome::InvalidProblem {
-                    message: format!(
-                        "CRC slot variable {} exceeds variable_bytes {variable_bytes}",
-                        slot.variable
-                    ),
+                    message: format!("CRC slot variable {} exceeds variable_bytes {variable_bytes}", slot.variable),
                 });
             }
         }
         for &var in &archive.target_byte_vars {
             if var >= variable_bytes {
                 return Err(SolveOutcome::InvalidProblem {
-                    message: format!(
-                        "CRC target byte variable {var} exceeds variable_bytes {variable_bytes}"
-                    ),
+                    message: format!("CRC target byte variable {var} exceeds variable_bytes {variable_bytes}"),
                 });
             }
         }
-        checksums.push(checksum_from_shared_slots(
-            EquationId(index as u32),
-            *archive,
-        )?);
+        checksums.push(checksum_from_shared_slots(EquationId(index as u32), *archive)?);
     }
     Ok(ConstraintProblem {
         variable_count: variable_bytes.saturating_mul(8),
@@ -809,13 +693,7 @@ pub fn solve_crc_identity_blocks(
     budget: SolverBudget,
     problem_digest: Option<String>,
 ) -> SolveOutcome {
-    solve_crc_identity_blocks_with_cancel(
-        blocks,
-        variable_bits,
-        budget,
-        problem_digest,
-        &CancelToken::new(),
-    )
+    solve_crc_identity_blocks_with_cancel(blocks, variable_bits, budget, problem_digest, &CancelToken::new())
 }
 
 /// [`solve_crc_identity_blocks`] with a shared cancel token.
@@ -844,24 +722,14 @@ pub fn solve_problem(problem: &ConstraintProblem) -> SolveOutcome {
 /// [`solve_problem`] with cooperative cancel checks while building and eliminating.
 pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelToken) -> SolveOutcome {
     if let Err(err) = cancel.check() {
-        return SolveOutcome::Cancelled {
-            message: err.message,
-        };
+        return SolveOutcome::Cancelled { message: err.message };
     }
     if let Err(err) = problem.validate() {
         return match err.category {
-            ErrorCategory::ResourceLimited => SolveOutcome::ResourceLimited {
-                message: err.message,
-            },
-            ErrorCategory::InvalidRequest => SolveOutcome::InvalidProblem {
-                message: err.message,
-            },
-            ErrorCategory::Cancelled => SolveOutcome::Cancelled {
-                message: err.message,
-            },
-            _ => SolveOutcome::InternalError {
-                message: err.message,
-            },
+            ErrorCategory::ResourceLimited => SolveOutcome::ResourceLimited { message: err.message },
+            ErrorCategory::InvalidRequest => SolveOutcome::InvalidProblem { message: err.message },
+            ErrorCategory::Cancelled => SolveOutcome::Cancelled { message: err.message },
+            _ => SolveOutcome::InternalError { message: err.message },
         };
     }
 
@@ -886,19 +754,14 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
     let cells = (row_count as u64).saturating_mul((cols as u64).saturating_add(1));
     if cells > problem.budget.max_matrix_bits {
         return SolveOutcome::ResourceLimited {
-            message: format!(
-                "matrix cells {cells} exceed budget.max_matrix_bits {}",
-                problem.budget.max_matrix_bits
-            ),
+            message: format!("matrix cells {cells} exceed budget.max_matrix_bits {}", problem.budget.max_matrix_bits),
         };
     }
     let mut row_ids = Vec::with_capacity(row_count);
     let mut matrix = BitMatrix::zeros(row_count, cols);
     for (row, eq) in problem.equations.iter().enumerate() {
         if let Err(err) = cancel.check() {
-            return SolveOutcome::Cancelled {
-                message: err.message,
-            };
+            return SolveOutcome::Cancelled { message: err.message };
         }
         row_ids.push(eq.id);
         let mut bits = vec![false; cols];
@@ -916,9 +779,7 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
     }
     for (offset, (id, bits, rhs)) in byte_derived.iter().enumerate() {
         if let Err(err) = cancel.check() {
-            return SolveOutcome::Cancelled {
-                message: err.message,
-            };
+            return SolveOutcome::Cancelled { message: err.message };
         }
         let row = problem.equations.len() + offset;
         row_ids.push(*id);
@@ -933,9 +794,7 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
     }
     for (offset, (id, bits, rhs)) in checksum_derived.iter().enumerate() {
         if let Err(err) = cancel.check() {
-            return SolveOutcome::Cancelled {
-                message: err.message,
-            };
+            return SolveOutcome::Cancelled { message: err.message };
         }
         let row = problem.equations.len() + byte_derived.len() + offset;
         row_ids.push(*id);
@@ -967,19 +826,14 @@ pub fn solve_problem_with_cancel(problem: &ConstraintProblem, cancel: &CancelTok
         }
         Err(err) => {
             if err.category == ErrorCategory::Cancelled {
-                SolveOutcome::Cancelled {
-                    message: err.message,
-                }
-            } else if err.category == ErrorCategory::ConstraintUnsatisfied {
+                SolveOutcome::Cancelled { message: err.message }
+            }
+            else if err.category == ErrorCategory::ConstraintUnsatisfied {
                 let conflicting_equation = inconsistent_row(&err.message).and_then(|row| row_ids.get(row).copied());
-                SolveOutcome::Unsat {
-                    message: err.message,
-                    conflicting_equation,
-                }
-            } else {
-                SolveOutcome::InternalError {
-                    message: err.message,
-                }
+                SolveOutcome::Unsat { message: err.message, conflicting_equation }
+            }
+            else {
+                SolveOutcome::InternalError { message: err.message }
             }
         }
     }

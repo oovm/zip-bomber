@@ -1,7 +1,7 @@
 //! Minimal stored-method ZIP emitter (Living `05` finite Bomb baseline).
 
 use zb_solver::crc32;
-use zb_types::{zip_layout, ErrorCode, ZbError, ZbResult};
+use zb_types::{ErrorCode, ZbError, ZbResult, zip_layout};
 
 const SIG_LFH: u32 = 0x0403_4b50;
 const SIG_CD: u32 = 0x0201_4b50;
@@ -24,10 +24,7 @@ pub struct StoredMember {
 /// Emit a single-volume ZIP using only the store method.
 pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
     if members.len() > u16::MAX as usize {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            "member count exceeds ZIP16 central directory limit",
-        ));
+        return Err(ZbError::new(ErrorCode::Internal, "member count exceeds ZIP16 central directory limit"));
     }
 
     let mut local = Vec::new();
@@ -37,21 +34,15 @@ pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
     for member in members {
         let name = member.path.as_bytes();
         if name.len() > u16::MAX as usize {
-            return Err(ZbError::new(
-                ErrorCode::Internal,
-                format!("member path `{}` exceeds u16 name length", member.path),
-            ));
+            return Err(ZbError::new(ErrorCode::Internal, format!("member path `{}` exceeds u16 name length", member.path)));
         }
         if member.payload.len() > u32::MAX as usize {
-            return Err(ZbError::new(
-                ErrorCode::Internal,
-                format!("member `{}` payload exceeds u32 size", member.path),
-            ));
+            return Err(ZbError::new(ErrorCode::Internal, format!("member `{}` payload exceeds u32 size", member.path)));
         }
         let crc = crc32(&member.payload);
         let size = member.payload.len() as u32;
-        let local_offset = u32::try_from(local.len())
-            .map_err(|_| ZbError::new(ErrorCode::Internal, "local header offset exceeds u32"))?;
+        let local_offset =
+            u32::try_from(local.len()).map_err(|_| ZbError::new(ErrorCode::Internal, "local header offset exceeds u32"))?;
         offsets.push(local_offset);
 
         write_u32(&mut local, SIG_LFH);
@@ -83,18 +74,15 @@ pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
         write_u16(&mut central, 0); // comment
         write_u16(&mut central, 0); // disk start
         write_u16(&mut central, 0); // int attrs
-        write_u32(
-            &mut central,
-            if member.path.ends_with('/') { 0x10 } else { 0 },
-        ); // DOS directory
+        write_u32(&mut central, if member.path.ends_with('/') { 0x10 } else { 0 }); // DOS directory
         write_u32(&mut central, local_offset);
         central.extend_from_slice(name);
     }
 
-    let cd_offset = u32::try_from(local.len())
-        .map_err(|_| ZbError::new(ErrorCode::Internal, "central directory offset exceeds u32"))?;
-    let cd_size = u32::try_from(central.len())
-        .map_err(|_| ZbError::new(ErrorCode::Internal, "central directory size exceeds u32"))?;
+    let cd_offset =
+        u32::try_from(local.len()).map_err(|_| ZbError::new(ErrorCode::Internal, "central directory offset exceeds u32"))?;
+    let cd_size =
+        u32::try_from(central.len()).map_err(|_| ZbError::new(ErrorCode::Internal, "central directory size exceeds u32"))?;
     let count = members.len() as u16;
 
     let mut out = local;
@@ -108,11 +96,7 @@ pub fn emit_stored_archive(members: &[StoredMember]) -> ZbResult<Vec<u8>> {
     write_u32(&mut out, cd_offset);
     write_u16(&mut out, 0); // comment
 
-    debug_assert_eq!(
-        zip_layout::EOCD_MIN as usize,
-        22,
-        "EOCD fixed size must match profile"
-    );
+    debug_assert_eq!(zip_layout::EOCD_MIN as usize, 22, "EOCD fixed size must match profile");
     let _ = offsets;
     Ok(out)
 }
