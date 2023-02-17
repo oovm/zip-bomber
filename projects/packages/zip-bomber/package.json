@@ -1,6 +1,6 @@
 {
     "name": "@sxo/zip-bomber",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "description": "Generate recursive ZIP / zip-bomb variants (bomb, quine, loopy, fractal)",
     "keywords": [
         "zip",
