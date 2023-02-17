@@ -15,19 +15,21 @@ license = "MPL-2.0"
 edition = "2021"
 
 [workspace.dependencies]
+acorn-zip = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev" }
+acorn-core = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev" }
+acorn-source = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev" }
+acorn-codec = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev" }
+
 zb-types = { path = "projects/crates/zb-types" }
 zb-solver = { path = "projects/crates/zb-solver" }
 zb-generate = { path = "projects/crates/zb-generate" }
 zb-benchmark = { path = "projects/crates/zb-benchmark" }
 zb-napi = { path = "projects/crates/zb-napi" }
 zb-wasm = { path = "projects/crates/zb-wasm" }
-acorn-zip = { path = "../acorn.rs/examples/acorn-zip" }
-acorn-core = { path = "../acorn.rs/projects/acorn-core" }
-acorn-source = { path = "../acorn.rs/projects/acorn-source" }
-acorn-codec = { path = "../acorn.rs/projects/acorn-codec" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-wasm-bindgen = "0.2"
+
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+wasm-bindgen = "0.2.129"
 napi = { version = "3.14.2", default-features = true, features = ["napi4"] }
 napi-derive = "3.6.12"
 

@@ -2,14 +2,9 @@
 
 [patch."https://github.com/yggdrasil-language/acorn.rs.git"]
 acorn-core = { path = "<your-path>/acorn.rs/projects/acorn-core" }
-acorn-cfb = { path = "<your-path>/acorn.rs/examples/acorn-cfb" }
-acorn-doc = { path = "<your-path>/acorn.rs/examples/acorn-doc" }
-acorn-docx = { path = "<your-path>/acorn.rs/examples/acorn-docx" }
-acorn-epub = { path = "<your-path>/acorn.rs/examples/acorn-epub" }
-
-[patch."https://github.com/notedge/notedown.git"]
-notedown-ir = { path = "<your-path>/notedown/projects/crates/notedown-ir" }
-notedown-formats = { path = "<your-path>/notedown/projects/crates/notedown-formats" }
+acorn-source = { path = "<your-path>/acorn.rs/projects/acorn-source" }
+acorn-codec = { path = "<your-path>/acorn.rs/projects/acorn-codec" }
+acorn-zip = { path = "<your-path>/acorn.rs/examples/acorn-zip" }
 
 [patch."https://github.com/yggdrasil-language/oak.rs.git"]
 oak-core = { path = "<your-path>/oaks/projects/oak-core" }
