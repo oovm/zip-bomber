@@ -2,6 +2,7 @@ import {
     VARIANTS,
     type ArtifactSet,
     type CapabilitySet,
+    type CapabilityStatus,
     type GenerateRequest,
     type GenerateReport,
     type Outcome,
@@ -9,6 +10,23 @@ import {
     type ZipBomberApi,
     type ZbError,
 } from "./types.js";
+
+/** Native / WASM generate hook result (root archive bytes). */
+export type BackendGenerateResult = {
+    exitCode: number;
+    ok: boolean;
+    bytes?: Uint8Array;
+    reportJson: string;
+    errorCategory?: string;
+    errorCode?: string;
+    errorMessage?: string;
+};
+
+/** Optional backend hooks so Node/WASM loaders stay isomorphic. */
+export type ZipBomberBackendHooks = {
+    generateVariant?: (variant: string) => BackendGenerateResult;
+    capabilities?: () => CapabilitySet;
+};
 
 function notImplementedReport(variant: VariantId): GenerateReport {
     return {
@@ -49,9 +67,111 @@ function bareRequest(variant: VariantId): GenerateRequest {
     };
 }
 
+function defaultCapabilities(bombStatus: CapabilityStatus): CapabilitySet {
+    return {
+        entries: [
+            ...VARIANTS.map((variant) => ({
+                container: "zip" as const,
+                variant,
+                topologyClass:
+                    variant === "bomb"
+                        ? "nested_tree"
+                        : variant === "quine"
+                          ? "self_loop"
+                          : variant === "loopy"
+                            ? "directed_cycle"
+                            : "fractal_finite",
+                profile: "zip.profile/v0-stub",
+                status: (variant === "bomb" ? bombStatus : "declared") as CapabilityStatus,
+            })),
+            {
+                container: "zip",
+                variant: "fractal",
+                topologyClass: "fractal_recursive",
+                profile: "zip.profile/v0-stub",
+                status: "declared",
+            },
+        ],
+    };
+}
+
+function parseReport(reportJson: string, fallback: VariantId): GenerateReport {
+    try {
+        const parsed = JSON.parse(reportJson) as Partial<GenerateReport>;
+        return {
+            schema: parsed.schema ?? "zb.report/v1",
+            container: "zip",
+            variant: (parsed.variant as VariantId) ?? fallback,
+            status: parsed.status ?? "error",
+            topology_nodes: parsed.topology_nodes ?? 0,
+            topology_edges: parsed.topology_edges ?? 0,
+            warnings: parsed.warnings ?? [],
+            error_code: parsed.error_code,
+            error_message: parsed.error_message,
+            crc_strategy: parsed.crc_strategy,
+        };
+    } catch {
+        const report = notImplementedReport(fallback);
+        report.status = "error";
+        report.error_code = "ZB_BINDING_MISMATCH";
+        report.error_message = "failed to parse native report JSON";
+        return report;
+    }
+}
+
+function artifactSetFromRoot(
+    bytes: Uint8Array | undefined,
+    variant: VariantId,
+): ArtifactSet {
+    const root = `${variant}-root`;
+    if (!bytes || bytes.length === 0) {
+        return { root, artifacts: [], logicalNodeMap: [] };
+    }
+    return {
+        root,
+        artifacts: [
+            {
+                id: root,
+                container: "zip",
+                bytes,
+                byteLength: String(bytes.length),
+                digest: "",
+            },
+        ],
+        logicalNodeMap: [`root=${root}`],
+    };
+}
+
+function outcomeFromBackend(
+    variant: VariantId,
+    result: BackendGenerateResult,
+): Outcome<ArtifactSet> {
+    const report = parseReport(result.reportJson, variant);
+    if (result.ok) {
+        return {
+            ok: true,
+            value: artifactSetFromRoot(result.bytes, variant),
+            report,
+        };
+    }
+    return {
+        ok: false,
+        error: {
+            category: (result.errorCategory as ZbError["category"]) ?? "not_implemented",
+            code: result.errorCode ?? "ZB_NOT_IMPLEMENTED",
+            message: result.errorMessage ?? `variant \`${variant}\` failed`,
+        },
+        report,
+    };
+}
+
 /** Shared isomorphic API used by Node and WASM loaders. */
-export function createSharedZipBomberApi(backend: "node" | "wasm" | "stub"): ZipBomberApi {
+export function createSharedZipBomberApi(
+    backend: "node" | "wasm" | "stub",
+    hooks: ZipBomberBackendHooks = {},
+): ZipBomberApi {
     let disposed = false;
+    const hasGenerate = typeof hooks.generateVariant === "function";
 
     const guard = async <T>(run: () => Promise<Outcome<T>>): Promise<Outcome<T>> => {
         if (disposed) {
@@ -72,33 +192,19 @@ export function createSharedZipBomberApi(backend: "node" | "wasm" | "stub"): Zip
         return run();
     };
 
+    const runVariant = (variant: VariantId): Outcome<ArtifactSet> => {
+        if (hasGenerate) {
+            return outcomeFromBackend(variant, hooks.generateVariant!(variant));
+        }
+        return failVariant(variant);
+    };
+
     return {
         async capabilities(): Promise<CapabilitySet> {
-            return {
-                entries: [
-                    ...VARIANTS.map((variant) => ({
-                        container: "zip" as const,
-                        variant,
-                        topologyClass:
-                            variant === "bomb"
-                                ? "nested_tree"
-                                : variant === "quine"
-                                  ? "self_loop"
-                                  : variant === "loopy"
-                                    ? "directed_cycle"
-                                    : "fractal_finite",
-                        profile: "zip.profile/v0-stub",
-                        status: "declared" as const,
-                    })),
-                    {
-                        container: "zip",
-                        variant: "fractal",
-                        topologyClass: "fractal_recursive",
-                        profile: "zip.profile/v0-stub",
-                        status: "declared",
-                    },
-                ],
-            };
+            if (hooks.capabilities) {
+                return hooks.capabilities();
+            }
+            return defaultCapabilities(hasGenerate ? "implemented" : "declared");
         },
         plan(request) {
             return guard(async () => ({
@@ -108,7 +214,7 @@ export function createSharedZipBomberApi(backend: "node" | "wasm" | "stub"): Zip
             }));
         },
         generate(request) {
-            return guard(async () => failVariant(request.variant));
+            return guard(async () => runVariant(request.variant));
         },
         verify() {
             return guard(async () => ({
@@ -122,16 +228,16 @@ export function createSharedZipBomberApi(backend: "node" | "wasm" | "stub"): Zip
             }));
         },
         zipBomb() {
-            return guard(async () => failVariant("bomb"));
+            return guard(async () => runVariant("bomb"));
         },
         zipQuine() {
-            return guard(async () => failVariant("quine"));
+            return guard(async () => runVariant("quine"));
         },
         zipLoopy() {
-            return guard(async () => failVariant("loopy"));
+            return guard(async () => runVariant("loopy"));
         },
         zipFractal() {
-            return guard(async () => failVariant("fractal"));
+            return guard(async () => runVariant("fractal"));
         },
         async dispose() {
             disposed = true;
@@ -140,7 +246,7 @@ export function createSharedZipBomberApi(backend: "node" | "wasm" | "stub"): Zip
     };
 }
 
-/** Convenience helpers shared by node/wasm entrypoints. */
+/** Convenience helpers shared by node/wasm entrypoints (stub backend). */
 export async function zipBomb(): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {

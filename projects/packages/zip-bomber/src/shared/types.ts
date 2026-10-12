@@ -28,6 +28,7 @@ export type ErrorCategory =
     | "constraint_unsatisfied"
     | "period_mismatch"
     | "verification_failed"
+    | "verification_capability_missing"
     | "cancelled"
     | "internal_error"
     | "not_implemented";
