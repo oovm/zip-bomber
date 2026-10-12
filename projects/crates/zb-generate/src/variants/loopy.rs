@@ -2,9 +2,9 @@
 
 use zb_types::{GenerateRequest, ZbResult};
 
-use super::{stub_artifact, Artifact};
+use super::{stub_bundle, ArtifactBundle};
 
 /// Generate a loopy archive. Template returns `not_implemented` report.
-pub fn generate(request: GenerateRequest) -> ZbResult<Artifact> {
-    Ok(stub_artifact(request))
+pub fn generate(request: GenerateRequest) -> ZbResult<ArtifactBundle> {
+    Ok(stub_bundle(request))
 }

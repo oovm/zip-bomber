@@ -32,6 +32,12 @@ fn validate_quine(request: &GenerateRequest) -> ZbResult<()> {
             "quine edge must be a self-loop on the sole node",
         ));
     }
+    if edge.member_path.is_empty() {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            "quine edge requires a non-empty member_path",
+        ));
+    }
     Ok(())
 }
 
@@ -47,6 +53,12 @@ fn validate_loopy(request: &GenerateRequest) -> ZbResult<()> {
         return Err(ZbError::new(
             ErrorCode::InvalidTopology,
             "loopy requires a directed cycle of length at least 2",
+        ));
+    }
+    if graph.edges.iter().any(|e| e.member_path.is_empty()) {
+        return Err(ZbError::new(
+            ErrorCode::InvalidTopology,
+            "loopy edges require non-empty member_path values",
         ));
     }
     Ok(())

@@ -1,8 +1,8 @@
-//! Generation variant kinds.
+//! Generation variant kinds (orthogonal to container).
 
 use serde::{Deserialize, Serialize};
 
-/// Supported recursive ZIP / bomb generation variants.
+/// Supported recursive archive variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VariantKind {
@@ -12,7 +12,7 @@ pub enum VariantKind {
     Quine,
     /// Directed cycle `A → B → … → A` with length at least 2.
     Loopy,
-    /// DAG with back-edges and structural self-similarity.
+    /// Finite replacement grammar with optional recursive SCC.
     Fractal,
 }
 
@@ -30,10 +30,10 @@ impl VariantKind {
     /// Parse a lowercase variant id.
     pub fn parse(input: &str) -> Option<Self> {
         match input {
-            "bomb" => Some(Self::Bomb),
-            "quine" => Some(Self::Quine),
-            "loopy" => Some(Self::Loopy),
-            "fractal" => Some(Self::Fractal),
+            "bomb" | "zipBomb" | "zip-bomb" => Some(Self::Bomb),
+            "quine" | "zipQuine" | "zip-quine" => Some(Self::Quine),
+            "loopy" | "zipLoopy" | "zip-loopy" => Some(Self::Loopy),
+            "fractal" | "zipFractal" | "zip-fractal" => Some(Self::Fractal),
             _ => None,
         }
     }
