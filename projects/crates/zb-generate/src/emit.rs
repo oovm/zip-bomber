@@ -1,6 +1,6 @@
 //! Minimal stored-method ZIP emitter (Living `05` finite Bomb baseline).
 
-use crate::crc::crc32;
+use zb_solver::crc32;
 use zb_types::{zip_layout, ErrorCode, ZbError, ZbResult};
 
 const SIG_LFH: u32 = 0x0403_4b50;

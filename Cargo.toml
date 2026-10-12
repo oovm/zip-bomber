@@ -3,6 +3,7 @@ resolver = "2"
 members = ["projects/crates/*"]
 default-members = [
 	"projects/crates/zb-types",
+	"projects/crates/zb-solver",
 	"projects/crates/zb-generate",
 	"projects/crates/zb-napi",
 ]
@@ -15,6 +16,7 @@ edition = "2021"
 
 [workspace.dependencies]
 zb-types = { path = "projects/crates/zb-types" }
+zb-solver = { path = "projects/crates/zb-solver" }
 zb-generate = { path = "projects/crates/zb-generate" }
 zb-napi = { path = "projects/crates/zb-napi" }
 zb-wasm = { path = "projects/crates/zb-wasm" }
@@ -24,8 +26,8 @@ acorn-source = { path = "../acorn.rs/projects/acorn-source" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 wasm-bindgen = "0.2"
-napi = { version = "2", default-features = false, features = ["napi4"] }
-napi-derive = "2"
+napi = { version = "3.14.2", default-features = true, features = ["napi4"] }
+napi-derive = "3.6.12"
 
 [profile.release]
 lto = true

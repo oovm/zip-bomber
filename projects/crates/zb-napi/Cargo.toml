@@ -20,7 +20,7 @@ zb-types = { workspace = true }
 serde_json = { workspace = true }
 
 [build-dependencies]
-napi-build = "2"
+napi-build = "2.6.0"
 
 [package.metadata.napi]
 name = "zip-bomber"
