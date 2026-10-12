@@ -55,25 +55,45 @@ pub struct CapabilitySet {
 }
 
 impl CapabilitySet {
-    /// Template snapshot: all ZIP variants declared, none implemented.
+    /// Current capability snapshot (Bomb nested tree is implementable).
     pub fn template_declared() -> Self {
         let profile = ZIP_PROFILE_V0.to_string();
         let rows = [
-            (VariantKind::Bomb, TopologyClass::NestedTree),
-            (VariantKind::Quine, TopologyClass::SelfLoop),
-            (VariantKind::Loopy, TopologyClass::DirectedCycle),
-            (VariantKind::Fractal, TopologyClass::FractalFinite),
-            (VariantKind::Fractal, TopologyClass::FractalRecursive),
+            (
+                VariantKind::Bomb,
+                TopologyClass::NestedTree,
+                CapabilityStatus::Implemented,
+            ),
+            (
+                VariantKind::Quine,
+                TopologyClass::SelfLoop,
+                CapabilityStatus::Declared,
+            ),
+            (
+                VariantKind::Loopy,
+                TopologyClass::DirectedCycle,
+                CapabilityStatus::Declared,
+            ),
+            (
+                VariantKind::Fractal,
+                TopologyClass::FractalFinite,
+                CapabilityStatus::Declared,
+            ),
+            (
+                VariantKind::Fractal,
+                TopologyClass::FractalRecursive,
+                CapabilityStatus::Declared,
+            ),
         ];
         Self {
             entries: rows
                 .into_iter()
-                .map(|(variant, topology_class)| CapabilityEntry {
+                .map(|(variant, topology_class, status)| CapabilityEntry {
                     container: ContainerKind::Zip,
                     variant,
                     topology_class,
                     profile: profile.clone(),
-                    status: CapabilityStatus::Declared,
+                    status,
                 })
                 .collect(),
         }
