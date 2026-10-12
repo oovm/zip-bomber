@@ -5,9 +5,7 @@ mod fractal;
 mod loopy;
 mod quine;
 
-use zb_types::{
-    ArtifactSet, GenerateReport, GenerateRequest, VariantKind, ZbResult,
-};
+use zb_types::{ArtifactSet, GenerateReport, GenerateRequest, VariantKind, ZbResult};
 
 /// Generated archive set plus report.
 #[derive(Debug, Clone, PartialEq, Eq)]

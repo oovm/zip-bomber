@@ -1,5 +1,7 @@
 //! WebAssembly export surface for zb (isomorphic with Node public surface).
 
+#![warn(missing_docs)]
+
 use wasm_bindgen::prelude::*;
 use zb_generate::{capabilities, generate, list_variants, report_json};
 use zb_types::{GenerateRequest, Outcome, VariantKind};

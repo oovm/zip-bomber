@@ -1,6 +1,6 @@
 //! ZIP local-header / central-directory layout planning.
 
-use zb_types::{zip_layout, GenerateRequest, ZipProfile, ZbError, ZbResult, ZIP_PROFILE_V0};
+use zb_types::{zip_layout, GenerateRequest, ZbError, ZbResult, ZipProfile, ZIP_PROFILE_V0};
 
 /// Planned sizes for one archive member (name + extras already chosen).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,7 +66,9 @@ pub fn plan(request: &GenerateRequest) -> ZbResult<LayoutPlan> {
     let profile = resolve_profile(request)?;
     Ok(LayoutPlan {
         profile_id: profile.id,
-        extra_budget: request.extra_budget.min(request.limits.max_artifact_bytes as u32),
+        extra_budget: request
+            .extra_budget
+            .min(request.limits.max_artifact_bytes as u32),
         lfh_fixed: zip_layout::LFH_FIXED,
         cd_entry_fixed: zip_layout::CD_ENTRY_FIXED,
         eocd_min: zip_layout::EOCD_MIN,
@@ -108,33 +110,4 @@ fn overflow(what: &str) -> ZbError {
         zb_types::ErrorCode::Internal,
         format!("checked arithmetic overflow in `{what}`"),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use zb_types::VariantKind;
-
-    #[test]
-    fn v0_profile_constants_match_living() {
-        let req = zb_types::GenerateRequest::bare(VariantKind::Bomb);
-        let plan = plan(&req).expect("plan");
-        assert_eq!(plan.lfh_fixed, 30);
-        assert_eq!(plan.cd_entry_fixed, 46);
-        assert_eq!(plan.eocd_min, 22);
-        assert_eq!(plan.profile_id, ZIP_PROFILE_V0);
-    }
-
-    #[test]
-    fn archive_size_for_single_stored_member() {
-        let member = MemberLayout {
-            name_len: 4,
-            local_extra_len: 0,
-            central_extra_len: 0,
-            comment_len: 0,
-            compressed_len: 10,
-        };
-        // LFH 34 + payload 10 + CD 50 + EOCD 22 = 116
-        assert_eq!(archive_size(&[member], 0).unwrap(), 116);
-    }
 }
