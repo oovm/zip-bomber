@@ -1,6 +1,7 @@
 use zb_generate::{crc32, emit_stored_archive, generate, StoredMember};
 use zb_types::{
-    ErrorCategory, GenerateLimits, GenerateRequest, Outcome, ReportStatus, VariantKind,
+    ArchiveEdge, EdgeRole, ErrorCategory, ErrorCode, GenerateLimits, GenerateRequest, NodeId,
+    Outcome, ReportStatus, TopologyGraph, VariantKind,
 };
 
 #[test]
@@ -56,5 +57,59 @@ fn finite_bomb_rejects_tiny_artifact_budget() {
             assert_eq!(report.status, ReportStatus::Error);
         }
         Outcome::Ok { .. } => panic!("expected resource_limited"),
+    }
+}
+
+#[test]
+fn topology_dag_emits_nested_member_path() {
+    let mut req = GenerateRequest::bare(VariantKind::Bomb);
+    req.topology = TopologyGraph::bomb_nest("root.zip", "child.zip", "nested/child.zip");
+    match generate(req) {
+        Outcome::Ok { value, report, .. } => {
+            assert_eq!(value.artifacts.len(), 2);
+            let root = value
+                .artifacts
+                .iter()
+                .find(|a| a.id == value.root)
+                .expect("root");
+            let hay = String::from_utf8_lossy(&root.bytes);
+            assert!(hay.contains("nested/child.zip"));
+            assert_eq!(report.status, ReportStatus::Ok);
+            assert!(report.archive_bytes.unwrap() > 0);
+        }
+        Outcome::Err { error, .. } => panic!("topology bomb should succeed: {error}"),
+    }
+}
+
+#[test]
+fn topology_cycle_is_rejected() {
+    let mut req = GenerateRequest::bare(VariantKind::Bomb);
+    let a = NodeId::new("a.zip");
+    let b = NodeId::new("b.zip");
+    req.topology = TopologyGraph {
+        nodes: vec![a.clone(), b.clone()],
+        edges: vec![
+            ArchiveEdge {
+                id: None,
+                from: a.clone(),
+                member_path: "b.zip".into(),
+                to: b.clone(),
+                role: EdgeRole::NestedArchive,
+            },
+            ArchiveEdge {
+                id: None,
+                from: b,
+                member_path: "a.zip".into(),
+                to: a,
+                role: EdgeRole::NestedArchive,
+            },
+        ],
+        alignment: Default::default(),
+    };
+    match generate(req) {
+        Outcome::Err { error, .. } => {
+            assert_eq!(error.code, ErrorCode::InvalidTopology);
+        }
+        Outcome::Ok { .. } => panic!("cycle must be rejected"),
     }
 }
