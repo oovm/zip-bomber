@@ -6,6 +6,8 @@ use zb_types::{ArtifactSet, ZbError, ZbResult};
 /// Facts the Acorn ZIP adapter must eventually expose for full verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcornZipCapability {
+    /// zb has a linked callable adapter to Acorn (path/crate dependency).
+    pub linked: bool,
     /// Can index ZIP / ZIP64 and discover member ranges.
     pub index_zip: bool,
     /// Can expose central-directory CRC32 / flags / version facts.
@@ -21,17 +23,14 @@ pub struct AcornZipCapability {
 }
 
 impl AcornZipCapability {
-    /// Observed public Acorn ZIP surface (not yet wired as a zb dependency).
-    ///
-    /// `index_zip` and `member_crc_facts` reflect the published `acorn-zip`
-    /// indexer once CRC / flags / version land on `ZipMember`. Decode still
-    /// lacks fully-consumed + CRC pair evidence required by Living `06` §3.
+    /// Observed public Acorn ZIP surface (not yet linked into zb).
     pub fn observed() -> Self {
         Self {
+            linked: false,
             index_zip: true,
             member_crc_facts: true,
-            bounded_decode_complete: false,
-            decode_crc_pair: false,
+            bounded_decode_complete: true,
+            decode_crc_pair: true,
             parse_budget: true,
             format_status_query: false,
         }
@@ -44,7 +43,8 @@ impl AcornZipCapability {
 
     /// Whether the adapter is sufficient for the v0 ZIP profile verification gate.
     pub fn supports_v0_full_verify(&self) -> bool {
-        self.index_zip
+        self.linked
+            && self.index_zip
             && self.member_crc_facts
             && self.bounded_decode_complete
             && self.decode_crc_pair
@@ -54,6 +54,9 @@ impl AcornZipCapability {
     /// Missing capability ids in stable order.
     pub fn missing(&self) -> Vec<&'static str> {
         let mut out = Vec::new();
+        if !self.linked {
+            out.push("linked");
+        }
         if !self.index_zip {
             out.push("index_zip");
         }
@@ -91,9 +94,9 @@ pub struct VerificationReport {
 
 /// Verify emitted ZIP bytes through an independent parser path.
 ///
-/// Until Acorn exposes complete-decode CRC facts, this returns
-/// [`verification_capability_missing`](ZbError::verification_capability_missing)
-/// instead of treating index success as proof.
+/// Acorn now exposes member CRC and decode CRC pair APIs, but zb has not linked
+/// the adapter yet, so this still returns
+/// [`verification_capability_missing`](ZbError::verification_capability_missing).
 pub fn verify_zip_bytes(_bytes: &[u8]) -> ZbResult<VerificationReport> {
     let acorn = AcornZipCapability::observed();
     if !acorn.supports_v0_full_verify() {
