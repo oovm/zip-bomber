@@ -1,5 +1,8 @@
 //! ZIP verification adapter surface (Living `06`).
 
+use acorn_core::ParseBudget;
+use acorn_source::MemorySource;
+use acorn_zip::{decode_member_with_facts, index_zip_bytes};
 use serde::{Deserialize, Serialize};
 use zb_types::{ArtifactSet, ZbError, ZbResult};
 
@@ -23,15 +26,16 @@ pub struct AcornZipCapability {
 }
 
 impl AcornZipCapability {
-    /// Observed public Acorn ZIP surface (not yet linked into zb).
+    /// Capability snapshot for the linked Acorn ZIP adapter in this build.
     pub fn observed() -> Self {
         Self {
-            linked: false,
+            linked: true,
             index_zip: true,
             member_crc_facts: true,
             bounded_decode_complete: true,
             decode_crc_pair: true,
             parse_budget: true,
+            // Trailing-data / data-descriptor query surface is still incomplete.
             format_status_query: false,
         }
     }
@@ -92,12 +96,8 @@ pub struct VerificationReport {
     pub notes: Vec<String>,
 }
 
-/// Verify emitted ZIP bytes through an independent parser path.
-///
-/// Acorn now exposes member CRC and decode CRC pair APIs, but zb has not linked
-/// the adapter yet, so this still returns
-/// [`verification_capability_missing`](ZbError::verification_capability_missing).
-pub fn verify_zip_bytes(_bytes: &[u8]) -> ZbResult<VerificationReport> {
+/// Verify emitted ZIP bytes through an independent Acorn parser path.
+pub fn verify_zip_bytes(bytes: &[u8]) -> ZbResult<VerificationReport> {
     let acorn = AcornZipCapability::observed();
     if !acorn.supports_v0_full_verify() {
         let missing: Vec<String> = acorn.missing().into_iter().map(str::to_string).collect();
@@ -106,11 +106,54 @@ pub fn verify_zip_bytes(_bytes: &[u8]) -> ZbResult<VerificationReport> {
             missing.join(", ")
         )));
     }
+
+    let owned = bytes.to_vec();
+    let index = index_zip_bytes("zb-verify.zip", owned.clone()).map_err(|err| {
+        ZbError::verification_failed(format!("Acorn ZIP index failed: {err}"))
+    })?;
+
+    if index.members.is_empty() {
+        return Err(ZbError::verification_failed(
+            "Acorn ZIP index returned no members",
+        ));
+    }
+
+    let budget = ParseBudget::default();
+    let mut notes = Vec::new();
+    notes.push(format!("indexed_members={}", index.members.len()));
+
+    for (i, member) in index.members.iter().enumerate() {
+        let source = MemorySource::from_bytes("zb-verify.zip", owned.clone());
+        let (_decoded, facts) =
+            decode_member_with_facts(format!("member-{i}"), source, member, &budget).map_err(
+                |err| {
+                    ZbError::verification_failed(format!(
+                        "Acorn decode failed for `{}`: {err}",
+                        member.path
+                    ))
+                },
+            )?;
+        if !facts.checksum_ok() {
+            return Err(ZbError::verification_failed(format!(
+                "Acorn CRC/consume check failed for `{}` expected={:#010x} actual={:#010x} fully_consumed={}",
+                member.path, facts.crc32_expected, facts.crc32_actual, facts.fully_consumed
+            )));
+        }
+        notes.push(format!(
+            "member=`{}` crc_ok fully_consumed decoded={}",
+            member.path, facts.decoded_size
+        ));
+    }
+
+    if !acorn.format_status_query {
+        notes.push("format_status_query unavailable (trailing-data / data-descriptor not asserted)".to_string());
+    }
+
     Ok(VerificationReport {
         ok: true,
         acorn,
         missing_capabilities: Vec::new(),
-        notes: vec!["full Acorn verification path not wired in this build".to_string()],
+        notes,
     })
 }
 
