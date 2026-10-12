@@ -1,0 +1,6 @@
+{
+    "zb.diagnostic.native_generate_available": "原生 generate 可用",
+    "zb.diagnostic.native_generate_stub": "原生 generate 为 stub（仅 TS）",
+    "zb.diagnostic.unknown_variant": "未知变体",
+    "zb.diagnostic.missing_generate_args": "generate 需要 --variant 与 --output"
+}

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createZipBomber, loadZipBomberNode, zipBomb, zipQuine } from "../src/node/index.js";
-import { createSharedZipBomberApi } from "../src/shared/facade.js";
-import { VARIANTS } from "../src/shared/types.js";
+import { createSharedZipBomberApi } from "../src/facade.js";
+import { VARIANTS } from "../src/types.js";
 
 test("VARIANTS lists four kinds", () => {
     assert.deepEqual([...VARIANTS], ["bomb", "quine", "loopy", "fractal"]);

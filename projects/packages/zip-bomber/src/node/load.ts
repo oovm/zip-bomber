@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import {
     createSharedZipBomberApi,
     type ZipBomberBackendHooks,
-} from "../shared/facade.js";
+} from "../facade.js";
 import {
     VARIANTS,
     type CapabilitySet,
@@ -10,7 +10,8 @@ import {
     type ArtifactSet,
     type VariantId,
     type ZipBomberApi,
-} from "../shared/types.js";
+} from "../types.js";
+import { toUint8Array } from "../wire.js";
 
 export type NativeGenerateResult = {
     exitCode: number;
@@ -74,7 +75,7 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                   return {
                       exitCode: result.exitCode,
                       ok: result.ok,
-                      bytes: result.bytes,
+                      bytes: toUint8Array(result.bytes),
                       reportJson: result.reportJson,
                       errorCategory: result.errorCategory,
                       errorCode: result.errorCode,

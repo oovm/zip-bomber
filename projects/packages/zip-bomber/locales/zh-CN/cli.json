@@ -1,0 +1,12 @@
+{
+    "zb.cli.intro": "zb — 递归 ZIP / zip-bomb 变体生成器",
+    "zb.cli.cmd.doctor": "探测后端、能力矩阵与 catalog 覆盖",
+    "zb.cli.cmd.variants": "列出已声明的 ZIP 变体",
+    "zb.cli.cmd.generate": "生成变体归档",
+    "zb.cli.cmd.plan": "可行性规划（不写出字节）",
+    "zb.cli.cmd.verify": "对已生成 artifact set 做独立复验",
+    "zb.cli.opt.json": "在 stdout 输出机器可读 JSON",
+    "zb.cli.opt.variant": "变体 id：bomb、quine、loopy 或 fractal",
+    "zb.cli.opt.output": "输出归档路径",
+    "zb.cli.opt.locale": "CLI 语言（BCP-47）"
+}

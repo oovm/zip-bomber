@@ -1,4 +1,7 @@
 import { writeFileSync } from "node:fs";
+
+import type { Cli, ParsedOptions } from "@vmz/commander";
+
 import {
     loadZipBomberNode,
     zipBomb,
@@ -6,20 +9,13 @@ import {
     zipLoopy,
     zipQuine,
 } from "../../node/load.js";
-import { VARIANTS, type VariantId } from "../../shared/types.js";
+import { VARIANTS, type VariantId } from "../../types.js";
 
-function parseArgs(argv: string[]): { variant?: string; output?: string } {
-    let variant: string | undefined;
-    let output: string | undefined;
-    for (let i = 0; i < argv.length; i += 1) {
-        const arg = argv[i];
-        if (arg === "--variant" || arg === "-v") {
-            variant = argv[++i];
-        } else if (arg === "-o" || arg === "--output") {
-            output = argv[++i];
-        }
-    }
-    return { variant, output };
+export function registerGenerateCommand(cli: Cli): void {
+    cli.command("generate", "zb.cli.cmd.generate")
+        .option("-v, --variant <id>", "zb.cli.opt.variant")
+        .option("-o, --output <path>", "zb.cli.opt.output")
+        .action((options) => runGenerate(options));
 }
 
 async function runShared(variant: VariantId) {
@@ -35,19 +31,18 @@ async function runShared(variant: VariantId) {
     }
 }
 
-/** Generate a variant archive (stub until native algorithms land). */
-export async function runGenerate(argv: string[]): Promise<void> {
-    const { variant, output } = parseArgs(argv);
+/** Generate a variant archive through the Node API / native binding. */
+export async function runGenerate(options: ParsedOptions): Promise<number> {
+    const variant = typeof options.variant === "string" ? options.variant : undefined;
+    const output = typeof options.output === "string" ? options.output : undefined;
     if (!variant || !output) {
-        console.error("usage: zip-bomber generate --variant <id> -o <path>");
-        process.exitCode = 1;
-        return;
+        console.error("generate requires --variant and --output");
+        return 1;
     }
     if (!VARIANTS.includes(variant as VariantId)) {
         console.error(`unknown variant: ${variant}`);
         console.error(`expected one of: ${VARIANTS.join(", ")}`);
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
     const node = loadZipBomberNode();
@@ -58,8 +53,7 @@ export async function runGenerate(argv: string[]): Promise<void> {
             writeFileSync(output, result.bytes);
             console.error(`wrote ${output} (${result.bytes.length} bytes)`);
         }
-        process.exitCode = result.exitCode;
-        return;
+        return result.exitCode;
     }
 
     const outcome = await runShared(variant as VariantId);
@@ -67,8 +61,7 @@ export async function runGenerate(argv: string[]): Promise<void> {
     if (outcome.ok && outcome.value.artifacts[0]?.bytes.length) {
         writeFileSync(output, outcome.value.artifacts[0].bytes);
         console.error(`wrote ${output}`);
-        process.exitCode = 0;
-        return;
+        return 0;
     }
-    process.exitCode = 2;
+    return 2;
 }

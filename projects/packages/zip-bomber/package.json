@@ -18,6 +18,7 @@
     },
     "files": [
         "bin",
+        "locales",
         "readme.md",
         "src"
     ],
