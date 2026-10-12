@@ -38,7 +38,18 @@ pub fn generate(request: GenerateRequest) -> Outcome<ArtifactSet> {
         );
         return Outcome::err(err, report);
     }
-    let _layout = layout::plan(&request);
+    let _layout = match layout::plan(&request) {
+        Ok(plan) => plan,
+        Err(err) => {
+            let report = GenerateReport::not_implemented(
+                request.variant,
+                request.crc_strategy,
+                request.topology.nodes.len(),
+                request.topology.edges.len(),
+            );
+            return Outcome::err(err, report);
+        }
+    };
     let _deflate = deflate::plan(&request);
     let _crc = crc::plan(&request);
     let variant = request.variant;
