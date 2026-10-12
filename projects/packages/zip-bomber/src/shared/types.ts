@@ -1,0 +1,107 @@
+/** Stable variant ids (container-orthogonal). */
+export type VariantId = "bomb" | "quine" | "loopy" | "fractal";
+
+/** First-wave container. */
+export type ContainerId = "zip";
+
+/** All variants in display order. */
+export const VARIANTS: readonly VariantId[] = [
+    "bomb",
+    "quine",
+    "loopy",
+    "fractal",
+] as const;
+
+/** Decimal u64 on the wire. */
+export type DecimalU64 = string;
+
+export type ErrorCategory =
+    | "invalid_request"
+    | "unsupported_container"
+    | "unsupported_variant"
+    | "unsupported_topology"
+    | "unsupported_profile"
+    | "backend_unavailable"
+    | "binding_mismatch"
+    | "resource_limited"
+    | "search_exhausted"
+    | "constraint_unsatisfied"
+    | "period_mismatch"
+    | "verification_failed"
+    | "cancelled"
+    | "internal_error"
+    | "not_implemented";
+
+export type ZbError = {
+    category: ErrorCategory;
+    code: string;
+    message: string;
+};
+
+export type GenerateReport = {
+    schema: string;
+    container: ContainerId;
+    variant: VariantId;
+    status: "ok" | "not_implemented" | "error";
+    topology_nodes: number;
+    topology_edges: number;
+    warnings: string[];
+    error_code?: string | null;
+    error_message?: string | null;
+    crc_strategy?: string;
+};
+
+export type Artifact = {
+    id: string;
+    container: ContainerId;
+    bytes: Uint8Array;
+    byteLength: DecimalU64;
+    digest: string;
+};
+
+export type ArtifactSet = {
+    root: string;
+    artifacts: Artifact[];
+    logicalNodeMap: string[];
+};
+
+export type Outcome<T> =
+    | { ok: true; value: T; report: GenerateReport }
+    | { ok: false; error: ZbError; report: GenerateReport };
+
+export type CapabilityStatus = "declared" | "implemented" | "verified";
+
+export type CapabilityEntry = {
+    container: ContainerId;
+    variant: VariantId;
+    topologyClass: string;
+    profile: string;
+    status: CapabilityStatus;
+};
+
+export type CapabilitySet = {
+    entries: CapabilityEntry[];
+};
+
+export type GenerateRequest = {
+    schema: "zb.request/v2";
+    container: ContainerId;
+    variant: VariantId;
+    /** Opaque topology object for template stubs. */
+    topology?: unknown;
+};
+
+export type ZipBomberApi = {
+    capabilities(): Promise<CapabilitySet>;
+    plan(request: GenerateRequest): Promise<Outcome<{ summary: string }>>;
+    generate(request: GenerateRequest): Promise<Outcome<ArtifactSet>>;
+    verify(
+        input: ArtifactSet,
+        spec?: unknown,
+    ): Promise<Outcome<{ verified: boolean }>>;
+    zipBomb(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
+    zipQuine(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
+    zipLoopy(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
+    zipFractal(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
+    dispose(): Promise<void>;
+};
