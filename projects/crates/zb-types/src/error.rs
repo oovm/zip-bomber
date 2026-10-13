@@ -87,6 +87,8 @@ pub enum ErrorCode {
     ResourceLimited,
     /// Independent verification failed.
     VerificationFailed,
+    /// Finite template search ended without a solution.
+    SearchExhausted,
     /// Algorithm path is not wired yet.
     NotImplemented,
     /// Internal invariant broke.
@@ -103,6 +105,7 @@ impl ErrorCode {
             Self::VerificationCapabilityMissing => "ZB_VERIFICATION_CAPABILITY_MISSING",
             Self::ResourceLimited => "ZB_RESOURCE_LIMITED",
             Self::VerificationFailed => "ZB_VERIFICATION_FAILED",
+            Self::SearchExhausted => "ZB_SEARCH_EXHAUSTED",
             Self::NotImplemented => "ZB_NOT_IMPLEMENTED",
             Self::Internal => "ZB_INTERNAL",
         }
@@ -117,6 +120,7 @@ impl ErrorCode {
             Self::VerificationCapabilityMissing => ErrorCategory::VerificationCapabilityMissing,
             Self::ResourceLimited => ErrorCategory::ResourceLimited,
             Self::VerificationFailed => ErrorCategory::VerificationFailed,
+            Self::SearchExhausted => ErrorCategory::SearchExhausted,
             Self::NotImplemented => ErrorCategory::NotImplemented,
             Self::Internal => ErrorCategory::InternalError,
         }
@@ -168,6 +172,11 @@ impl ZbError {
     /// Independent verification failure helper.
     pub fn verification_failed(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::VerificationFailed, message)
+    }
+
+    /// Finite template search exhausted helper.
+    pub fn search_exhausted(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::SearchExhausted, message)
     }
 }
 

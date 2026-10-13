@@ -27,12 +27,12 @@ fn plans_topology_bomb_as_feasible() {
 }
 
 #[test]
-fn plans_quine_as_not_implemented() {
+fn plans_quine_as_search_exhausted_without_templates() {
     match plan_generate(GenerateRequest::bare(VariantKind::Quine)) {
         Outcome::Err { error, report, .. } => {
-            assert_eq!(error.category.as_str(), "not_implemented");
+            assert_eq!(error.category.as_str(), "search_exhausted");
             assert_eq!(report.variant, VariantKind::Quine);
         }
-        Outcome::Ok { .. } => panic!("quine plan should be not_implemented"),
+        Outcome::Ok { .. } => panic!("quine plan should be search_exhausted"),
     }
 }

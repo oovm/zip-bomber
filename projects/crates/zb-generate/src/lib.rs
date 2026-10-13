@@ -6,6 +6,7 @@ mod crc;
 mod deflate;
 mod emit;
 mod layout;
+mod templates;
 mod validate;
 mod variants;
 mod verify;
@@ -28,6 +29,7 @@ pub use zb_solver::{
     crc32, crc32_affine_columns, solve, solve_rows, u32_to_bits, Assignment, BitMatrix,
     EquationId, Gf2Solution, SolveOutcome, VariableId, CRC32_CHECK, CRC32_POLY,
 };
+pub use templates::{list_quine_templates, QuineTemplateMeta};
 pub use variants::ArtifactBundle;
 pub use verify::{verify_artifact_set, verify_zip_bytes, AcornZipCapability, VerificationReport};
 
@@ -99,7 +101,19 @@ pub fn plan_generate(request: GenerateRequest) -> Outcome<PlanSummary> {
             let report = GenerateReport::ok(variant, crc, nodes, edges, 0, 0, Vec::new());
             Outcome::ok(plan, report)
         }
-        VariantKind::Quine | VariantKind::Loopy | VariantKind::Fractal => {
+        VariantKind::Quine => {
+            let registered = templates::list_quine_templates(&layout.profile_id).len();
+            let err = ZbError::search_exhausted(format!(
+                "quine plan: {registered} verified templates for `{}`",
+                layout.profile_id
+            ));
+            let mut report = GenerateReport::failed(variant, crc, nodes, edges, &err);
+            report.warnings.push(
+                "quine requires a verified DEFLATE self-reference skeleton before emit".to_string(),
+            );
+            Outcome::err(err, report)
+        }
+        VariantKind::Loopy | VariantKind::Fractal => {
             let err = ZbError::not_implemented(format!(
                 "plan for variant `{}` is not implemented yet",
                 variant.as_str()
