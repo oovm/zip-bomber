@@ -23,5 +23,8 @@ acorn-zip = { workspace = true }
 acorn-core = { workspace = true }
 acorn-source = { workspace = true }
 
+[dev-dependencies]
+flate2 = "1"
+
 [features]
 default = []

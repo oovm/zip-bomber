@@ -45,9 +45,13 @@ fn chain_long_repeat() {
 }
 
 #[test]
-fn stored_block_len_nlen() {
+fn stored_block_is_legal_raw_deflate() {
+    use std::io::Read;
     let block = encode_stored_block(b"hi", true).unwrap();
-    assert_eq!(&block[0..2], &2u16.to_le_bytes());
-    assert_eq!(&block[2..4], &(!2u16).to_le_bytes());
-    assert_eq!(&block[4..], b"hi");
+    // BFINAL=1, BTYPE=00, then padded to byte, then LEN/NLEN + data.
+    assert_eq!(block[0] & 0b111, 0b001);
+    let mut decoder = flate2::read::DeflateDecoder::new(&block[..]);
+    let mut out = Vec::new();
+    decoder.read_to_end(&mut out).unwrap();
+    assert_eq!(out, b"hi");
 }
