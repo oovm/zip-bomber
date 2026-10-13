@@ -92,14 +92,28 @@ export type GenerateRequest = {
     topology?: unknown;
 };
 
+export type PlanSummary = {
+    feasible: boolean;
+    variant: VariantId;
+    profile: string;
+    summary: string;
+    warnings: string[];
+};
+
+export type VerifySummary = {
+    verified: boolean;
+    notes: string[];
+    missingCapabilities: string[];
+};
+
 export type ZipBomberApi = {
     capabilities(): Promise<CapabilitySet>;
-    plan(request: GenerateRequest): Promise<Outcome<{ summary: string }>>;
+    plan(request: GenerateRequest): Promise<Outcome<PlanSummary>>;
     generate(request: GenerateRequest): Promise<Outcome<ArtifactSet>>;
     verify(
         input: ArtifactSet,
         spec?: unknown,
-    ): Promise<Outcome<{ verified: boolean }>>;
+    ): Promise<Outcome<VerifySummary>>;
     zipBomb(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
     zipQuine(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;
     zipLoopy(options?: Record<string, unknown>): Promise<Outcome<ArtifactSet>>;

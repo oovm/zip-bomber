@@ -8,5 +8,6 @@
     "zb.cli.opt.json": "在 stdout 输出机器可读 JSON",
     "zb.cli.opt.variant": "变体 id：bomb、quine、loopy 或 fractal",
     "zb.cli.opt.output": "输出归档路径",
+    "zb.cli.opt.input": "待复验的输入归档路径",
     "zb.cli.opt.locale": "CLI 语言（BCP-47）"
 }

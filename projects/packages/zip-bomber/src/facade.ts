@@ -6,7 +6,9 @@ import {
     type GenerateRequest,
     type GenerateReport,
     type Outcome,
+    type PlanSummary,
     type VariantId,
+    type VerifySummary,
     type ZipBomberApi,
     type ZbError,
 } from "./types.js";
@@ -22,9 +24,34 @@ export type BackendGenerateResult = {
     errorMessage?: string;
 };
 
+/** Native / WASM plan hook result. */
+export type BackendPlanResult = {
+    exitCode: number;
+    ok: boolean;
+    feasible?: boolean;
+    summary?: string;
+    profile?: string;
+    reportJson: string;
+    errorCategory?: string;
+    errorCode?: string;
+    errorMessage?: string;
+};
+
+/** Native / WASM verify hook result. */
+export type BackendVerifyResult = {
+    exitCode: number;
+    ok: boolean;
+    reportJson: string;
+    errorCategory?: string;
+    errorCode?: string;
+    errorMessage?: string;
+};
+
 /** Optional backend hooks so Node/WASM loaders stay isomorphic. */
 export type ZipBomberBackendHooks = {
     generateVariant?: (variant: string) => BackendGenerateResult;
+    planVariant?: (variant: string) => BackendPlanResult;
+    verifyZipBytes?: (bytes: Uint8Array) => BackendVerifyResult;
     capabilities?: () => CapabilitySet;
 };
 
@@ -199,6 +226,102 @@ export function createSharedZipBomberApi(
         return failVariant(variant);
     };
 
+    const planVariant = (variant: VariantId): Outcome<PlanSummary> => {
+        if (hooks.planVariant) {
+            const result = hooks.planVariant(variant);
+            const report = parseReport(result.reportJson, variant);
+            if (result.ok) {
+                return {
+                    ok: true,
+                    value: {
+                        feasible: result.feasible ?? true,
+                        variant,
+                        profile: result.profile ?? "zip.profile/v0-stub",
+                        summary: result.summary ?? "planned",
+                        warnings: report.warnings ?? [],
+                    },
+                    report,
+                };
+            }
+            return {
+                ok: false,
+                error: {
+                    category: (result.errorCategory as ZbError["category"]) ?? "not_implemented",
+                    code: result.errorCode ?? "ZB_NOT_IMPLEMENTED",
+                    message: result.errorMessage ?? `plan for \`${variant}\` failed`,
+                },
+                report,
+            };
+        }
+        return {
+            ok: false,
+            error: notImplementedError(variant),
+            report: notImplementedReport(variant),
+        };
+    };
+
+    const verifyBytes = (input: ArtifactSet): Outcome<VerifySummary> => {
+        const root =
+            input.artifacts.find((a) => a.id === input.root) ?? input.artifacts[0];
+        if (!root || root.bytes.length === 0) {
+            const report = notImplementedReport("bomb");
+            report.status = "error";
+            report.error_code = "ZB_INVALID_TOPOLOGY";
+            report.error_message = "artifact set has no root bytes to verify";
+            return {
+                ok: false,
+                error: {
+                    category: "invalid_request",
+                    code: "ZB_INVALID_TOPOLOGY",
+                    message: "artifact set has no root bytes to verify",
+                },
+                report,
+            };
+        }
+        if (hooks.verifyZipBytes) {
+            const result = hooks.verifyZipBytes(root.bytes);
+            const report = parseReport(result.reportJson, "bomb");
+            if (result.ok) {
+                let notes: string[] = [];
+                let missingCapabilities: string[] = [];
+                try {
+                    const parsed = JSON.parse(result.reportJson) as {
+                        notes?: string[];
+                        missing_capabilities?: string[];
+                    };
+                    notes = parsed.notes ?? [];
+                    missingCapabilities = parsed.missing_capabilities ?? [];
+                } catch {
+                    // keep empty notes
+                }
+                return {
+                    ok: true,
+                    value: { verified: true, notes, missingCapabilities },
+                    report,
+                };
+            }
+            return {
+                ok: false,
+                error: {
+                    category:
+                        (result.errorCategory as ZbError["category"]) ?? "verification_failed",
+                    code: result.errorCode ?? "ZB_VERIFICATION_FAILED",
+                    message: result.errorMessage ?? "verification failed",
+                },
+                report,
+            };
+        }
+        return {
+            ok: false,
+            error: {
+                category: "not_implemented",
+                code: "ZB_NOT_IMPLEMENTED",
+                message: "verify is not implemented yet",
+            },
+            report: notImplementedReport("bomb"),
+        };
+    };
+
     return {
         async capabilities(): Promise<CapabilitySet> {
             if (hooks.capabilities) {
@@ -207,25 +330,13 @@ export function createSharedZipBomberApi(
             return defaultCapabilities(hasGenerate ? "implemented" : "declared");
         },
         plan(request) {
-            return guard(async () => ({
-                ok: false,
-                error: notImplementedError(request.variant),
-                report: notImplementedReport(request.variant),
-            }));
+            return guard(async () => planVariant(request.variant));
         },
         generate(request) {
             return guard(async () => runVariant(request.variant));
         },
-        verify() {
-            return guard(async () => ({
-                ok: false,
-                error: {
-                    category: "not_implemented",
-                    code: "ZB_NOT_IMPLEMENTED",
-                    message: "verify is not implemented yet",
-                },
-                report: notImplementedReport("bomb"),
-            }));
+        verify(input) {
+            return guard(async () => verifyBytes(input));
         },
         zipBomb() {
             return guard(async () => runVariant("bomb"));

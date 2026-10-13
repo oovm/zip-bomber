@@ -23,10 +23,33 @@ export type NativeGenerateResult = {
     errorMessage?: string;
 };
 
+export type NativePlanResult = {
+    exitCode: number;
+    ok: boolean;
+    feasible?: boolean;
+    summary?: string;
+    profile?: string;
+    reportJson: string;
+    errorCategory?: string;
+    errorCode?: string;
+    errorMessage?: string;
+};
+
+export type NativeVerifyResult = {
+    exitCode: number;
+    ok: boolean;
+    reportJson: string;
+    errorCategory?: string;
+    errorCode?: string;
+    errorMessage?: string;
+};
+
 export type ZipBomberNodeApi = {
     listVariants: () => VariantId[];
     createZipBomber: () => Promise<ZipBomberApi>;
     generateVariant?: (variant: string) => NativeGenerateResult;
+    planVariant?: (variant: string) => NativePlanResult;
+    verifyZipBytes?: (bytes: Buffer) => NativeVerifyResult;
 };
 
 type NativeBinding = {
@@ -43,6 +66,25 @@ type NativeBinding = {
         exitCode: number;
         ok: boolean;
         bytes?: Buffer;
+        reportJson: string;
+        errorCategory?: string;
+        errorCode?: string;
+        errorMessage?: string;
+    };
+    planVariant?: (variant: string) => {
+        exitCode: number;
+        ok: boolean;
+        feasible?: boolean;
+        summary?: string;
+        profile?: string;
+        reportJson: string;
+        errorCategory?: string;
+        errorCode?: string;
+        errorMessage?: string;
+    };
+    verifyZipBytesNapi?: (bytes: Buffer) => {
+        exitCode: number;
+        ok: boolean;
         reportJson: string;
         errorCategory?: string;
         errorCode?: string;
@@ -83,6 +125,35 @@ function hooksFromBinding(binding: NativeBinding): ZipBomberBackendHooks {
                   };
               }
             : undefined,
+        planVariant: binding.planVariant
+            ? (variant) => {
+                  const result = binding.planVariant!(variant);
+                  return {
+                      exitCode: result.exitCode,
+                      ok: result.ok,
+                      feasible: result.feasible,
+                      summary: result.summary,
+                      profile: result.profile,
+                      reportJson: result.reportJson,
+                      errorCategory: result.errorCategory,
+                      errorCode: result.errorCode,
+                      errorMessage: result.errorMessage,
+                  };
+              }
+            : undefined,
+        verifyZipBytes: binding.verifyZipBytesNapi
+            ? (bytes) => {
+                  const result = binding.verifyZipBytesNapi!(Buffer.from(bytes));
+                  return {
+                      exitCode: result.exitCode,
+                      ok: result.ok,
+                      reportJson: result.reportJson,
+                      errorCategory: result.errorCategory,
+                      errorCode: result.errorCode,
+                      errorMessage: result.errorMessage,
+                  };
+              }
+            : undefined,
         capabilities: caps ? () => caps : undefined,
     };
 }
@@ -107,6 +178,12 @@ export function loadZipBomberNode(): ZipBomberNodeApi {
                 createZipBomber: async () => createSharedZipBomberApi("node", hooks),
                 generateVariant: binding.generateVariant
                     ? (variant) => binding.generateVariant!(variant)
+                    : undefined,
+                planVariant: binding.planVariant
+                    ? (variant) => binding.planVariant!(variant)
+                    : undefined,
+                verifyZipBytes: binding.verifyZipBytesNapi
+                    ? (bytes) => binding.verifyZipBytesNapi!(bytes)
                     : undefined,
             };
         } catch {
