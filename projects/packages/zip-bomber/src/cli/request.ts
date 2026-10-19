@@ -12,7 +12,7 @@ const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 export function requestOptions(command: Command): Command {
     return command
         .option("--request <path>", "zb.cli.opt.request")
-        .option("--quine-name <path>", "zb.cli.opt.quineName")
+        .option("--fixed-point <path>", "zb.cli.opt.fixedPoint")
         .option("--attach <archivePath=sourcePath>...", "zb.cli.opt.attach")
         .option("--directory <path>...", "zb.cli.opt.directory");
 }
@@ -28,7 +28,7 @@ export type HostRequest =
 
 function hasStructureFlags(options: ParsedOptions): boolean {
     return options.variant !== undefined ||
-        options["quine-name"] !== undefined ||
+        options["fixed-point"] !== undefined ||
         list(options, "attach").length > 0 ||
         list(options, "directory").length > 0;
 }
@@ -48,7 +48,7 @@ export async function readHostRequest(options: ParsedOptions): Promise<HostReque
     if (typeof variant !== "string" || !VARIANTS.includes(variant as VariantId)) {
         throw new InputError("zb.cli.err.variant");
     }
-    const selfName = options["quine-name"];
+    const selfName = options["fixed-point"];
     const attachments = list(options, "attach");
     const directories = list(options, "directory");
     if (variant !== "quine" && (selfName !== undefined || attachments.length || directories.length)) {
@@ -72,10 +72,10 @@ export async function readHostRequest(options: ParsedOptions): Promise<HostReque
     return {
         kind: "flags",
         request: {
-            schema: "zb.request/v2",
+            schema: "zb.request/v0",
             container: "zip",
             variant: variant as VariantId,
-            selfMemberPath: typeof selfName === "string" ? selfName : undefined,
+            fixedPoint: typeof selfName === "string" ? selfName : undefined,
             payloads,
         },
     };

@@ -1,7 +1,4 @@
-use zb_generate::{
-    emit_stored_archive, generate, verify_artifact_set, verify_zip_bytes, AcornZipCapability,
-    StoredMember,
-};
+use zb_generate::{AcornZipCapability, StoredMember, emit_stored_archive, generate, verify_artifact_set, verify_zip_bytes};
 use zb_types::{ErrorCategory, GenerateRequest, Outcome, VariantKind};
 
 #[test]
@@ -19,11 +16,7 @@ fn linked_adapter_supports_v0_gate() {
 
 #[test]
 fn verifies_emitted_stored_archive() {
-    let bytes = emit_stored_archive(&[StoredMember {
-        path: "a.txt".into(),
-        payload: b"hello-zb".to_vec(),
-    }])
-    .unwrap();
+    let bytes = emit_stored_archive(&[StoredMember { path: "a.txt".into(), payload: b"hello-zb".to_vec() }]).unwrap();
     let report = verify_zip_bytes(&bytes).expect("verify");
     assert!(report.ok);
     assert!(report.notes.iter().any(|n| n.contains("crc_ok")));
@@ -32,14 +25,8 @@ fn verifies_emitted_stored_archive() {
 #[test]
 fn verifies_empty_stored_file_and_directory_entry() {
     let bytes = emit_stored_archive(&[
-        StoredMember {
-            path: "empty.txt".into(),
-            payload: Vec::new(),
-        },
-        StoredMember {
-            path: "dir/".into(),
-            payload: Vec::new(),
-        },
+        StoredMember { path: "empty.txt".into(), payload: Vec::new() },
+        StoredMember { path: "dir/".into(), payload: Vec::new() },
     ])
     .unwrap();
     let report = verify_zip_bytes(&bytes).expect("verify");
@@ -66,9 +53,9 @@ fn verifies_finite_bomb_root() {
 fn verifies_full_loopy_artifact_set() {
     let request = zb_types::generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":[
                 {"members":[
                     {"kind":"payload","path":"a.txt","bytes":"YWJj"},
@@ -88,10 +75,7 @@ fn verifies_full_loopy_artifact_set() {
             assert_eq!(value.artifacts.len(), 2);
             let report = verify_artifact_set(&value).expect("verify loopy set");
             assert!(report.ok);
-            assert!(report
-                .notes
-                .iter()
-                .any(|n| n == "artifact_count=2"));
+            assert!(report.notes.iter().any(|n| n == "artifact_count=2"));
             assert!(!value.logical_node_map.is_empty());
         }
         Outcome::Err { error, .. } => panic!("loopy generate failed: {error}"),
@@ -102,9 +86,7 @@ fn verifies_full_loopy_artifact_set() {
 fn rejects_artifact_set_with_unknown_logical_map_id() {
     match generate(GenerateRequest::bare(VariantKind::Bomb)) {
         Outcome::Ok { mut value, .. } => {
-            value
-                .logical_node_map
-                .push("bogus=not-a-real-artifact-id".into());
+            value.logical_node_map.push("bogus=not-a-real-artifact-id".into());
             let err = verify_artifact_set(&value).unwrap_err();
             assert_eq!(err.category, ErrorCategory::InvalidRequest);
             assert!(err.message.contains("unknown artifact id"));

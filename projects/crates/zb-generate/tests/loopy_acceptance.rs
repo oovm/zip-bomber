@@ -1,5 +1,5 @@
 use zb_generate::generate;
-use zb_types::{encode_base64, generate_request_from_json, Outcome};
+use zb_types::{Outcome, encode_base64, generate_request_from_json};
 
 fn loopy_request(
     path_a: &str,
@@ -11,9 +11,9 @@ fn loopy_request(
 ) -> zb_types::GenerateRequest {
     generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":[
                 {"members":[
                     {"kind":"payload","path":file_a,"bytes":encode_base64(payload_a)},
@@ -45,11 +45,7 @@ fn assert_cycle_ok(request: zb_types::GenerateRequest) {
 
 #[test]
 fn name_length_deltas_one_two_three() {
-    for (a, b) in [
-        ("n/x.zip", "n/yy.zip"),
-        ("n/x.zip", "n/yyy.zip"),
-        ("n/x.zip", "n/yyyy.zip"),
-    ] {
+    for (a, b) in [("n/x.zip", "n/yy.zip"), ("n/x.zip", "n/yyy.zip"), ("n/x.zip", "n/yyyy.zip")] {
         assert_cycle_ok(loopy_request(a, b, "a.txt", "b.txt", b"alpha", b"beta"));
     }
 }
@@ -68,14 +64,7 @@ fn utf8_archive_and_payload_names() {
 
 #[test]
 fn unequal_attachment_lengths() {
-    assert_cycle_ok(loopy_request(
-        "next/b.zip",
-        "back/a.zip",
-        "a.txt",
-        "b.txt",
-        b"short",
-        &vec![b'L'; 4096],
-    ));
+    assert_cycle_ok(loopy_request("next/b.zip", "back/a.zip", "a.txt", "b.txt", b"short", &vec![b'L'; 4096]));
 }
 
 #[test]
@@ -85,12 +74,5 @@ fn pk_signature_embedded_in_attachment() {
     payload.extend_from_slice(b"PK\x01\x02");
     payload.extend_from_slice(b"PK\x05\x06");
     payload.extend_from_slice(b"suffix");
-    assert_cycle_ok(loopy_request(
-        "next/b.zip",
-        "back/a.zip",
-        "a.txt",
-        "b.txt",
-        &payload,
-        b"other-side",
-    ));
+    assert_cycle_ok(loopy_request("next/b.zip", "back/a.zip", "a.txt", "b.txt", &payload, b"other-side"));
 }

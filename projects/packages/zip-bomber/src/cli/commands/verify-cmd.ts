@@ -32,7 +32,7 @@ type ManifestV1 = {
 function loadPublishedSet(dir: string): ArtifactSet {
     const manifestPath = join(dir, "manifest.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ManifestV1;
-    if (manifest.schema && manifest.schema !== "zb.manifest/v1") {
+    if (manifest.schema && manifest.schema !== "zb.manifest/v0") {
         throw new Error(`unsupported manifest schema: ${manifest.schema}`);
     }
     if (!manifest.root || !Array.isArray(manifest.artifacts) || manifest.artifacts.length === 0) {

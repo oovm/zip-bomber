@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { inflateRawSync } from "node:zlib";
-import { createZipLoopy } from "../src/builders.js";
+import { createLoopy } from "../src/builders.js";
 import { createZipBomber as createNode, loadZipBomberNode } from "../src/node/index.js";
 import { createZipBomber as createWasm } from "../src/wasm/index.js";
 
@@ -40,7 +40,7 @@ function findLocal(archive: Buffer, name: string): number {
 
 test("Node and WASM Loopy builders share a two-node byte cycle", async () => {
     assert.ok(loadZipBomberNode().generateVariant, "build native binding before backend tests");
-    const built = createZipLoopy();
+    const built = createLoopy();
     const a = built.node({
         label: "alpha",
         payloads: [{ archivePath: "readme.txt", bytes: new TextEncoder().encode("loopy-a\n") }],
@@ -61,8 +61,8 @@ test("Node and WASM Loopy builders share a two-node byte cycle", async () => {
         const [nativePlan, wasmPlan, nativeGen, wasmGen] = await Promise.all([
             node.plan(spec.value),
             wasm.plan(spec.value),
-            node.zipLoopy(spec.value),
-            wasm.zipLoopy(spec.value),
+            node.loopy(spec.value),
+            wasm.loopy(spec.value),
         ]);
         assert.ok(nativePlan.ok, JSON.stringify(nativePlan));
         assert.ok(wasmPlan.ok, JSON.stringify(wasmPlan));
@@ -91,14 +91,14 @@ test("Node and WASM Loopy builders share a two-node byte cycle", async () => {
         assert.ok((await node.verify(nativeGen.value)).ok);
         assert.ok((await wasm.verify(wasmGen.value)).ok);
 
-        assert.equal(nativeGen.report.schema, "zb.report/v2");
-        assert.equal(wasmGen.report.schema, "zb.report/v2");
-        assert.equal(nativeGen.report.profile, "zip.loopy-two-node.gapped/v1");
+        assert.equal(nativeGen.report.schema, "zb.report/v0");
+        assert.equal(wasmGen.report.schema, "zb.report/v0");
+        assert.equal(nativeGen.report.profile, "zip.loopy-two-node.gapped/v0");
         assert.deepEqual(nativeGen.report.solver, wasmGen.report.solver);
         assert.ok(nativeGen.report.solver);
         assert.ok(nativeGen.report.solver!.rank > 0);
         assert.equal(nativeGen.report.solver!.equations_used, 64);
-        assert.equal(nativeGen.report.solver!.problem_digest, "loopy.crc.shared/v1");
+        assert.equal(nativeGen.report.solver!.problem_digest, "loopy.crc.shared/v0");
 
         const nativeFacts = nativeGen.report.loopy;
         const wasmFacts = wasmGen.report.loopy;
@@ -107,7 +107,7 @@ test("Node and WASM Loopy builders share a two-node byte cycle", async () => {
         assert.deepEqual(nativeFacts, wasmFacts);
         assert.equal(nativeFacts!.requested_nodes, 2);
         assert.equal(nativeFacts!.byte_period, 2);
-        assert.equal(nativeFacts!.profile, "zip.loopy-two-node.gapped/v1");
+        assert.equal(nativeFacts!.profile, "zip.loopy-two-node.gapped/v0");
         assert.equal(nativeFacts!.edges.length, 2);
         assert.ok(nativeFacts!.edges.every((edge) => edge.bytes_equal));
         assert.equal(nativeFacts!.crc_rank, nativeGen.report.solver!.rank);

@@ -1,10 +1,10 @@
 export {
     createZipBomber,
     loadZipBomberNode,
-    zipBomb,
-    zipFractal,
-    zipLoopy,
-    zipQuine,
+    bomb,
+    fractal,
+    loopy,
+    quine,
 } from "./load.js";
 
-export { createZipLoopy, createZipFractal } from "../builders.js";
+export { createLoopy, createFractal } from "../builders.js";

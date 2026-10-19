@@ -11,7 +11,5 @@ pub struct CrcPlan {
 
 /// Plan CRC resolution. Template echoes strategy only.
 pub fn plan(request: &GenerateRequest) -> CrcPlan {
-    CrcPlan {
-        strategy: request.crc_strategy,
-    }
+    CrcPlan { strategy: request.crc_strategy }
 }

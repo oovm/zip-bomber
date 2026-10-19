@@ -159,11 +159,7 @@ pub struct ZbError {
 impl ZbError {
     /// Construct an error from a legacy code.
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self {
-            category: code.category(),
-            code,
-            message: message.into(),
-        }
+        Self { category: code.category(), code, message: message.into() }
     }
 
     /// Not-implemented helper.

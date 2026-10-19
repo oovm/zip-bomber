@@ -20,10 +20,10 @@ export type {
 export { VARIANTS } from "./types.js";
 export {
     createSharedZipBomberApi,
-    zipBomb,
-    zipFractal,
-    zipLoopy,
-    zipQuine,
+    bomb,
+    fractal,
+    loopy,
+    quine,
 } from "./facade.js";
 export type { BackendGenerateResult, ZipBomberBackendHooks } from "./facade.js";
 export type { ZipBomberApiFactory, ZipBomberBackend } from "./api.js";
@@ -35,6 +35,6 @@ export {
     toUint8Array,
 } from "./wire.js";
 
-export { createZipLoopy, createZipFractal } from "./builders.js";
-export type { ZipLoopySpec, ZipFractalSpec, ZipLoopyBuilder, ZipFractalBuilder, LoopyNode, FractalNode,
+export { createLoopy, createFractal } from "./builders.js";
+export type { LoopySpec, FractalSpec, LoopyBuilder, FractalBuilder, LoopyNode, FractalNode,
     BuildOptions, BuildOutcome, BuildDiagnostic, NodeOptions, ArchiveLink, GenerateLimits } from "./types.js";

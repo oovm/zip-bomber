@@ -60,28 +60,20 @@ pub fn interpret(program: &[u8]) -> ZbResult<Vec<u8>> {
         if op & 0x80 != 0 {
             let n = usize::from(op & 0x3f);
             if n == 0 {
-                return Err(ZbError::new(
-                    ErrorCode::Internal,
-                    "abstract Repeat(0) is invalid",
-                ));
+                return Err(ZbError::new(ErrorCode::Internal, "abstract Repeat(0) is invalid"));
             }
             if n > out.len() {
-                return Err(ZbError::new(
-                    ErrorCode::Internal,
-                    format!("abstract Repeat({n}) exceeds emitted {}", out.len()),
-                ));
+                return Err(ZbError::new(ErrorCode::Internal, format!("abstract Repeat({n}) exceeds emitted {}", out.len())));
             }
             for _ in 0..n {
                 let b = out[out.len() - n];
                 out.push(b);
             }
-        } else {
+        }
+        else {
             let n = usize::from(op & 0x3f);
             if i + n > program.len() {
-                return Err(ZbError::new(
-                    ErrorCode::Internal,
-                    format!("abstract Literal({n}) overruns program"),
-                ));
+                return Err(ZbError::new(ErrorCode::Internal, format!("abstract Literal({n}) overruns program")));
             }
             out.extend_from_slice(&program[i..i + n]);
             i += n;

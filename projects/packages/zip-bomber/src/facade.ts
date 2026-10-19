@@ -57,7 +57,7 @@ export type BackendVerifyResult = {
 
 /** Optional backend hooks so Node/WASM loaders stay isomorphic. */
 export type ZipBomberBackendHooks = {
-    /** Preferred full-request path (`zb.request/v2` JSON). */
+    /** Preferred full-request path (`zb.request/v0` JSON). */
     generateRequestJson?: (requestJson: string) => BackendGenerateResult;
     /**
      * Libuv-pool generate. `signal` abort flips the shared cancel flag.
@@ -87,7 +87,7 @@ export type ZipBomberBackendHooks = {
 
 function notImplementedReport(variant: VariantId): GenerateReport {
     return {
-        schema: "zb.report/v1",
+        schema: "zb.report/v0",
         container: "zip",
         variant,
         status: "not_implemented",
@@ -135,7 +135,7 @@ function failVariant(variant: VariantId): Outcome<ArtifactSet> {
 
 function bareRequest(variant: VariantId): GenerateRequest {
     return {
-        schema: "zb.request/v2",
+        schema: "zb.request/v0",
         container: "zip",
         variant,
     };
@@ -150,14 +150,14 @@ function mergeRequest(
         return graphRequest(options);
     }
     return {
-        schema: "zb.request/v2",
+        schema: "zb.request/v0",
         container: "zip",
         variant,
         graph: options?.graph,
         profile: options?.profile,
         limits: options?.limits,
         topology: options?.topology,
-        selfMemberPath: options?.selfMemberPath,
+        fixedPoint: options?.fixedPoint,
         payloads: options?.payloads,
     };
 }
@@ -165,7 +165,7 @@ function mergeRequest(
 function requestNeedsJson(request: GenerateRequest): boolean {
     return Boolean(
         request.graph !== undefined || request.profile !== undefined || request.limits !== undefined ||
-        request.selfMemberPath !== undefined ||
+        request.fixedPoint !== undefined ||
             (request.payloads && request.payloads.length > 0) ||
             request.topology !== undefined,
     );
@@ -175,7 +175,7 @@ function toWireJson(request: GenerateRequest): string {
     return encodeGenerateRequestJson({
         variant: request.variant,
         graph: request.graph, profile: request.profile, limits: request.limits,
-        selfMemberPath: request.selfMemberPath,
+        fixedPoint: request.fixedPoint,
         payloads: request.payloads,
         topology: request.topology,
     });
@@ -202,9 +202,9 @@ function defaultCapabilities(bombStatus: CapabilityStatus): CapabilitySet {
         entries: [
             row("bomb", "nested_tree", "zip.profile/v0-stub", "implemented"),
             row("quine", "self_loop", "zip.profile/v0-stub", "verified"),
-            row("loopy", "directed_cycle", "zip.loopy-two-node.gapped/v1", "verified"),
+            row("loopy", "directed_cycle", "zip.loopy-two-node.gapped/v0", "verified"),
             row("fractal", "fractal_finite", "zip.profile/v0-stub", "implemented"),
-            row("fractal", "fractal_recursive", "zip.loopy-two-node.gapped/v1", "implemented"),
+            row("fractal", "fractal_recursive", "zip.loopy-two-node.gapped/v0", "implemented"),
         ],
     };
 }
@@ -213,7 +213,7 @@ function parseReport(reportJson: string, fallback: VariantId): GenerateReport {
     try {
         const parsed = JSON.parse(reportJson) as Partial<GenerateReport>;
         return {
-            schema: parsed.schema ?? "zb.report/v1",
+            schema: parsed.schema ?? "zb.report/v0",
             container: "zip",
             variant: (parsed.variant as VariantId) ?? fallback,
             status: parsed.status ?? "error",
@@ -335,7 +335,7 @@ export function createSharedZipBomberApi(
                         category: "backend_unavailable",
                         code: "ZB_BACKEND_UNAVAILABLE",
                         message:
-                            "backend lacks generateRequestJson for selfMemberPath/payloads",
+                            "backend lacks generateRequestJson for fixedPoint/payloads",
                     },
                     report: notImplementedReport(request.variant),
                 };
@@ -429,7 +429,7 @@ export function createSharedZipBomberApi(
     const isGenerateRequest = (value: unknown): value is GenerateRequest =>
         typeof value === "object" &&
         value !== null &&
-        (value as GenerateRequest).schema === "zb.request/v2" &&
+        (value as GenerateRequest).schema === "zb.request/v0" &&
         typeof (value as GenerateRequest).variant === "string";
 
     const verifySet = (
@@ -513,16 +513,16 @@ export function createSharedZipBomberApi(
         verify(input, spec) {
             return guard(async () => verifySet(input, spec));
         },
-        zipBomb(options) {
+        bomb(options) {
             return guard(async () => runRequest(mergeRequest("bomb", options)));
         },
-        zipQuine(options) {
+        quine(options) {
             return guard(async () => runRequest(mergeRequest("quine", options)));
         },
-        zipLoopy(options) {
+        loopy(options) {
             return guard(async () => runRequest(mergeRequest("loopy", options)));
         },
-        zipFractal(options) {
+        fractal(options) {
             return guard(async () => runRequest(mergeRequest("fractal", options)));
         },
         async dispose() {
@@ -533,45 +533,45 @@ export function createSharedZipBomberApi(
 }
 
 /** Convenience helpers shared by node/wasm entrypoints (stub backend). */
-export async function zipBomb(
+export async function bomb(
     options?: Partial<GenerateRequest>,
 ): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipBomb(options);
+        return await api.bomb(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipQuine(
+export async function quine(
     options?: Partial<GenerateRequest>,
 ): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipQuine(options);
+        return await api.quine(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipLoopy(
+export async function loopy(
     options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipLoopy(options);
+        return await api.loopy(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipFractal(
+export async function fractal(
     options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = createSharedZipBomberApi("stub");
     try {
-        return await api.zipFractal(options);
+        return await api.fractal(options);
     } finally {
         await api.dispose();
     }

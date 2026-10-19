@@ -1,5 +1,5 @@
 import type { ArchiveLink, BuildOptions, BuildOutcome, FractalNode, GenerateRequest, GraphSpec,
-    LoopyNode, NodeOptions, PayloadSpec, ZipFractalBuilder, ZipFractalSpec, ZipLoopyBuilder, ZipLoopySpec } from "./types.js";
+    LoopyNode, NodeOptions, PayloadSpec, FractalBuilder, FractalSpec, LoopyBuilder, LoopySpec } from "./types.js";
 import { encodeBase64 } from "./wire.js";
 
 type Member = { kind: "payload"; path: string; bytes: Uint8Array } |
@@ -112,23 +112,23 @@ class Draft {
         }))};
         // Recursive two-node SCC requires the explicit gapped profile; finite trees stay on the stub profile.
         const profile = options.profile ?? (mode === "recursive"
-            ? "zip.loopy-two-node.gapped/v1"
+            ? "zip.loopy-two-node.gapped/v0"
             : "zip.profile/v0-stub");
         const spec = Object.freeze({ variant }) as GraphSpec;
-        snapshots.set(spec,JSON.stringify({schema:"zb.request/v2",container:"zip",variant,graph,profile,limits:options.limits}));
+        snapshots.set(spec,JSON.stringify({schema:"zb.request/v0",container:"zip",variant,graph,profile,limits:options.limits}));
         return {ok:true,value:spec,diagnostics:[]};
     }
 }
 
 /** Declare nodes, connect a simple cycle, then build an immutable specification. */
-export function createZipLoopy(): ZipLoopyBuilder {
+export function createLoopy(): LoopyBuilder {
     const d = new Draft();
     return {node: options=>d.node(options),root(node){d.root(node as FractalNode);return this;},
-        build: (options={})=>d.build("loopy",options) as BuildOutcome<ZipLoopySpec>};
+        build: (options={})=>d.build("loopy",options) as BuildOutcome<LoopySpec>};
 }
 /** Declare shared states and branches, then choose recursive or finite evaluation. */
-export function createZipFractal(): ZipFractalBuilder {
+export function createFractal(): FractalBuilder {
     const d = new Draft();
     return {node: options=>d.node(options),root(node){d.root(node);return this;},
-        build: options=>d.build("fractal",options) as BuildOutcome<ZipFractalSpec>};
+        build: options=>d.build("fractal",options) as BuildOutcome<FractalSpec>};
 }

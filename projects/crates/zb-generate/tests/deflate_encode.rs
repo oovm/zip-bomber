@@ -1,6 +1,6 @@
 use zb_generate::{
-    decode_raw_deflate, encode_fixed_stream, encode_stored_stream, DeflateBlock, DeflateBlockPlan,
-    FixedBlock, StoredBlock, Symbol,
+    DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol, decode_raw_deflate, encode_fixed_stream,
+    encode_stored_stream,
 };
 
 fn inflate(raw: &[u8]) -> Vec<u8> {
@@ -23,14 +23,7 @@ fn fixed_literals_roundtrip() {
 
 #[test]
 fn fixed_repeat_roundtrip() {
-    let symbols = vec![
-        Symbol::Literal(b'a'),
-        Symbol::Literal(b'b'),
-        Symbol::Match {
-            length: 4,
-            distance: 2,
-        },
-    ];
+    let symbols = vec![Symbol::Literal(b'a'), Symbol::Literal(b'b'), Symbol::Match { length: 4, distance: 2 }];
     let raw = encode_fixed_stream(&symbols).unwrap();
     assert_eq!(inflate(&raw), b"ababab");
 }
@@ -38,10 +31,7 @@ fn fixed_repeat_roundtrip() {
 #[test]
 fn stored_then_fixed_multi_block() {
     let mut plan = DeflateBlockPlan::new();
-    plan.push(
-        DeflateBlock::Stored(StoredBlock::new(b"pre".to_vec())),
-        false,
-    );
+    plan.push(DeflateBlock::Stored(StoredBlock::new(b"pre".to_vec())), false);
     plan.push(DeflateBlock::Fixed(FixedBlock::from_literals(b"-z")), true);
     let raw = plan.encode().unwrap();
     assert_eq!(inflate(&raw), b"pre-z");
@@ -59,10 +49,7 @@ fn fixed_then_stored_multi_block_stays_bit_continuous() {
 #[test]
 fn length_258_and_distance_edge() {
     let mut symbols = vec![Symbol::Literal(b'x')];
-    symbols.push(Symbol::Match {
-        length: 258,
-        distance: 1,
-    });
+    symbols.push(Symbol::Match { length: 258, distance: 1 });
     let raw = encode_fixed_stream(&symbols).unwrap();
     let out = inflate(&raw);
     assert_eq!(out.len(), 259);

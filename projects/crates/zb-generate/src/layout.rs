@@ -1,9 +1,6 @@
 //! ZIP local-header / central-directory layout planning.
 
-use zb_types::{
-    zip_layout, GenerateRequest, ZbError, ZbResult, ZipProfile, ZIP_LOOPY_TWO_NODE_GAPPED_V1,
-    ZIP_PROFILE_V0,
-};
+use zb_types::{GenerateRequest, ZIP_LOOPY_TWO_NODE_GAPPED_V0, ZIP_PROFILE_V0, ZbError, ZbResult, ZipProfile, zip_layout};
 
 /// Planned sizes for one archive member (name + extras already chosen).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,11 +53,8 @@ pub struct LayoutPlan {
 pub fn resolve_profile(request: &GenerateRequest) -> ZbResult<ZipProfile> {
     match request.profile.as_str() {
         ZIP_PROFILE_V0 => Ok(ZipProfile::v0_stub()),
-        ZIP_LOOPY_TWO_NODE_GAPPED_V1 => Ok(ZipProfile::loopy_two_node_gapped_v1()),
-        other => Err(ZbError::new(
-            zb_types::ErrorCode::UnsupportedProfile,
-            format!("unsupported profile `{other}`"),
-        )),
+        ZIP_LOOPY_TWO_NODE_GAPPED_V0 => Ok(ZipProfile::loopy_two_node_gapped_v1()),
+        other => Err(ZbError::new(zb_types::ErrorCode::UnsupportedProfile, format!("unsupported profile `{other}`"))),
     }
 }
 
@@ -69,9 +63,7 @@ pub fn plan(request: &GenerateRequest) -> ZbResult<LayoutPlan> {
     let profile = resolve_profile(request)?;
     Ok(LayoutPlan {
         profile_id: profile.id,
-        extra_budget: request
-            .extra_budget
-            .min(request.limits.max_artifact_bytes as u32),
+        extra_budget: request.extra_budget.min(request.limits.max_artifact_bytes as u32),
         lfh_fixed: zip_layout::LFH_FIXED,
         cd_entry_fixed: zip_layout::CD_ENTRY_FIXED,
         eocd_min: zip_layout::EOCD_MIN,
@@ -85,23 +77,11 @@ pub fn archive_size(members: &[MemberLayout], eocd_extra: u32) -> ZbResult<u64> 
     for member in members {
         let lfh = u64::from(member.lfh_size()?);
         let compressed = u64::from(member.compressed_len);
-        offset = offset
-            .checked_add(lfh)
-            .and_then(|v| v.checked_add(compressed))
-            .ok_or_else(|| overflow("member_offset"))?;
-        cd_size = cd_size
-            .checked_add(u64::from(member.cd_entry_size()?))
-            .ok_or_else(|| overflow("cd_size"))?;
+        offset = offset.checked_add(lfh).and_then(|v| v.checked_add(compressed)).ok_or_else(|| overflow("member_offset"))?;
+        cd_size = cd_size.checked_add(u64::from(member.cd_entry_size()?)).ok_or_else(|| overflow("cd_size"))?;
     }
-    let eocd = u64::from(
-        zip_layout::EOCD_MIN
-            .checked_add(eocd_extra)
-            .ok_or_else(|| overflow("eocd"))?,
-    );
-    offset
-        .checked_add(cd_size)
-        .and_then(|v| v.checked_add(eocd))
-        .ok_or_else(|| overflow("archive_size"))
+    let eocd = u64::from(zip_layout::EOCD_MIN.checked_add(eocd_extra).ok_or_else(|| overflow("eocd"))?);
+    offset.checked_add(cd_size).and_then(|v| v.checked_add(eocd)).ok_or_else(|| overflow("archive_size"))
 }
 
 fn checked_add_u32(a: u32, b: u32) -> ZbResult<u32> {
@@ -109,8 +89,5 @@ fn checked_add_u32(a: u32, b: u32) -> ZbResult<u32> {
 }
 
 fn overflow(what: &str) -> ZbError {
-    ZbError::new(
-        zb_types::ErrorCode::Internal,
-        format!("checked arithmetic overflow in `{what}`"),
-    )
+    ZbError::new(zb_types::ErrorCode::Internal, format!("checked arithmetic overflow in `{what}`"))
 }

@@ -21,7 +21,7 @@ period checks. **implemented** means the code path exists and is budget-planned,
 verified. `capabilities()` returns exactly this matrix, and no report claims more than the code proves.
 
 Honest boundaries: a cycle longer than two nodes returns `unsupported_topology` instead of being silently truncated to
-two, and a two-node cycle that does not explicitly select the `zip.loopy-two-node.gapped/v1` profile returns
+two, and a two-node cycle that does not explicitly select the `zip.loopy-two-node.gapped/v0` profile returns
 `unsupported_profile` instead of quietly switching constructors.
 
 ## 🚀 Quick start
@@ -58,18 +58,18 @@ looks finished. request files, `--variant`, and the attachment flags are mutuall
 | `zb generate` | write the archive set, `manifest.json`, and `report.json`                  |
 | `zb verify`   | re-verify an archive, or a published directory with `--dir`                |
 
-Useful options: `--variant`, `--output`, `--quine-name` (self-member path), repeated `--attach archivePath=sourcePath`,
+Useful options: `--variant`, `--output`, `--fixed-point` (self-member path), repeated `--attach archivePath=sourcePath`,
 repeated `--directory`, `--request`, `--input`, `--dir`, `--json`, `--locale`.
 
 ## 📦 Node and browser
 
 ```js
-import { zipQuine, zipLoopy } from "@sxo/zip-bomber";
+import { quine, loopy } from "@sxo/zip-bomber";
 import { createZipBomber } from "@sxo/zip-bomber/node";
 import { createZipBomber as createWasm } from "@sxo/zip-bomber/wasm";
 
 const api = await createZipBomber();
-const result = await api.zipQuine({ selfMemberPath: "a/a.zip" });
+const result = await api.quine({ fixedPoint: "a/a.zip" });
 if (result.ok) {
     for (const artifact of result.value.artifacts) {
         console.log(artifact.id, artifact.bytes.byteLength);
@@ -78,13 +78,13 @@ if (result.ok) {
 await api.dispose();
 ```
 
-The same facade backs all three entries: `zipBomb`, `zipQuine`, `zipLoopy`, `zipFractal`, `plan`, `verify`, and
-`capabilities`. `createZipLoopy()` and `createZipFractal()` build a staged spec with owner-bound node handles, so you
+The same facade backs all three entries: `bomb`, `quine`, `loopy`, `fractal`, `plan`, `verify`, and
+`capabilities`. `createLoopy()` and `createFractal()` build a staged spec with owner-bound node handles, so you
 link nodes by handle instead of inventing ids.
 
 Structured results instead of thrown strings:
 
-- `Outcome` carries `ok`, the value, and a `zb.report/v2` report.
+- `Outcome` carries `ok`, the value, and a `zb.report/v0` report.
 - Errors use stable `ZB_*` codes and categories, so they can be branched on rather than matched as text.
 - Success reports carry the resolved profile, the solver facts (`rank`, `free_bits`, `equations_used`,
   `problem_digest`), per-edge facts, and `budget_usage`.

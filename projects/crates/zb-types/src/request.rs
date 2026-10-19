@@ -1,13 +1,11 @@
-//! Generate request and payload slots (`zb.request/v2`).
+//! Generate request and payload slots (`zb.request/v0`).
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    zip_layout, ContainerKind, GenerateLimits, TopologyGraph, VariantKind, ZIP_PROFILE_V0,
-};
+use crate::{ContainerKind, GenerateLimits, TopologyGraph, VariantKind, ZIP_PROFILE_V0, zip_layout};
 
 /// Request schema id.
-pub const REQUEST_SCHEMA_V2: &str = "zb.request/v2";
+pub const REQUEST_SCHEMA: &str = "zb.request/v0";
 
 /// How CRC32 fixed points will be resolved (algorithm module later).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,10 +78,10 @@ pub struct FractalSpec {
     pub root_symbol: String,
 }
 
-/// Full generation request (`zb.request/v2` shape).
+/// Full generation request (`zb.request/v0` shape).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerateRequest {
-    /// Always [`REQUEST_SCHEMA_V2`].
+    /// Always [`REQUEST_SCHEMA`].
     pub schema: String,
     /// Archive container.
     pub container: ContainerKind,
@@ -122,7 +120,7 @@ impl GenerateRequest {
             root_symbol: "S".to_string(),
         });
         Self {
-            schema: REQUEST_SCHEMA_V2.to_string(),
+            schema: REQUEST_SCHEMA.to_string(),
             container: ContainerKind::Zip,
             variant,
             graph: None,

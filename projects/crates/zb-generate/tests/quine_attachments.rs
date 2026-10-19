@@ -2,26 +2,10 @@ use zb_generate::{decode_raw_deflate, generate, plan_generate, verify_zip_bytes}
 use zb_types::{GenerateRequest, Outcome, PayloadSpec, TopologyGraph, VariantKind};
 
 fn inflate_member(archive: &[u8], local_offset: usize) -> Vec<u8> {
-    let method = u16::from_le_bytes(
-        archive[local_offset + 8..local_offset + 10]
-            .try_into()
-            .unwrap(),
-    );
-    let compressed = u32::from_le_bytes(
-        archive[local_offset + 18..local_offset + 22]
-            .try_into()
-            .unwrap(),
-    ) as usize;
-    let name_len = u16::from_le_bytes(
-        archive[local_offset + 26..local_offset + 28]
-            .try_into()
-            .unwrap(),
-    ) as usize;
-    let extra = u16::from_le_bytes(
-        archive[local_offset + 28..local_offset + 30]
-            .try_into()
-            .unwrap(),
-    ) as usize;
+    let method = u16::from_le_bytes(archive[local_offset + 8..local_offset + 10].try_into().unwrap());
+    let compressed = u32::from_le_bytes(archive[local_offset + 18..local_offset + 22].try_into().unwrap()) as usize;
+    let name_len = u16::from_le_bytes(archive[local_offset + 26..local_offset + 28].try_into().unwrap()) as usize;
+    let extra = u16::from_le_bytes(archive[local_offset + 28..local_offset + 30].try_into().unwrap()) as usize;
     let start = local_offset + 30 + name_len + extra;
     let data = &archive[start..start + compressed];
     if method == 0 {
@@ -35,22 +19,10 @@ fn quine_with_attachments_dirs_and_utf8_names() {
     let mut request = GenerateRequest::bare(VariantKind::Quine);
     request.topology = TopologyGraph::quine_self("release.zip", "recurse/again.zip");
     request.payloads = vec![
-        PayloadSpec {
-            path: "readme.txt".into(),
-            bytes: b"hello quine attachments\n".to_vec(),
-        },
-        PayloadSpec {
-            path: "assets/说明.txt".into(),
-            bytes: "中文附件内容".as_bytes().to_vec(),
-        },
-        PayloadSpec {
-            path: "empty/".into(),
-            bytes: Vec::new(),
-        },
-        PayloadSpec {
-            path: "metadata/config.json".into(),
-            bytes: br#"{"ok":true}"#.to_vec(),
-        },
+        PayloadSpec { path: "readme.txt".into(), bytes: b"hello quine attachments\n".to_vec() },
+        PayloadSpec { path: "assets/说明.txt".into(), bytes: "中文附件内容".as_bytes().to_vec() },
+        PayloadSpec { path: "empty/".into(), bytes: Vec::new() },
+        PayloadSpec { path: "metadata/config.json".into(), bytes: br#"{"ok":true}"#.to_vec() },
     ];
 
     let set = match generate(request.clone()) {
@@ -104,18 +76,9 @@ fn explicit_directories_can_contain_files_in_either_order() {
         let mut request = GenerateRequest::bare(VariantKind::Quine);
         request.topology = TopologyGraph::quine_self("release.zip", "assets/again.zip");
         request.payloads = vec![
-            PayloadSpec {
-                path: "assets/".into(),
-                bytes: vec![],
-            },
-            PayloadSpec {
-                path: "assets/nested/".into(),
-                bytes: vec![],
-            },
-            PayloadSpec {
-                path: "assets/nested/说明.txt".into(),
-                bytes: b"content".to_vec(),
-            },
+            PayloadSpec { path: "assets/".into(), bytes: vec![] },
+            PayloadSpec { path: "assets/nested/".into(), bytes: vec![] },
+            PayloadSpec { path: "assets/nested/说明.txt".into(), bytes: b"content".to_vec() },
         ];
         if reverse {
             request.payloads.reverse();
@@ -131,19 +94,9 @@ fn explicit_directories_can_contain_files_in_either_order() {
 
 #[test]
 fn malformed_directory_slashes_and_file_ancestors_are_rejected() {
-    for paths in [
-        vec!["assets//"],
-        vec!["assets", "assets/data.txt"],
-        vec!["a", "a/a.zip"],
-    ] {
+    for paths in [vec!["assets//"], vec!["assets", "assets/data.txt"], vec!["a", "a/a.zip"]] {
         let mut request = GenerateRequest::bare(VariantKind::Quine);
-        request.payloads = paths
-            .iter()
-            .map(|p| PayloadSpec {
-                path: p.to_string(),
-                bytes: vec![],
-            })
-            .collect();
+        request.payloads = paths.iter().map(|p| PayloadSpec { path: p.to_string(), bytes: vec![] }).collect();
         assert!(matches!(generate(request), Outcome::Err { .. }));
     }
 }
@@ -151,10 +104,7 @@ fn malformed_directory_slashes_and_file_ancestors_are_rejected() {
 #[test]
 fn compressed_attachments_still_consume_decode_budget() {
     let mut request = GenerateRequest::bare(VariantKind::Quine);
-    request.payloads = vec![PayloadSpec {
-        path: "large.txt".into(),
-        bytes: vec![b'x'; 100_000],
-    }];
+    request.payloads = vec![PayloadSpec { path: "large.txt".into(), bytes: vec![b'x'; 100_000] }];
     request.limits.max_decoded_bytes = 50_000;
     match generate(request) {
         Outcome::Err { error, .. } => {
@@ -176,10 +126,7 @@ fn incompressible_attachment_exceeding_window_is_rejected_by_plan_and_generate()
         })
         .collect();
     let mut request = GenerateRequest::bare(VariantKind::Quine);
-    request.payloads = vec![PayloadSpec {
-        path: "binary.dat".into(),
-        bytes,
-    }];
+    request.payloads = vec![PayloadSpec { path: "binary.dat".into(), bytes }];
     match plan_generate(request.clone()) {
         Outcome::Err { error, .. } => {
             assert_eq!(error.category, zb_types::ErrorCategory::ResourceLimited)
@@ -198,14 +145,8 @@ fn incompressible_attachment_exceeding_window_is_rejected_by_plan_and_generate()
 fn quine_rejects_duplicate_and_conflicting_paths() {
     let mut request = GenerateRequest::bare(VariantKind::Quine);
     request.payloads = vec![
-        PayloadSpec {
-            path: "a.txt".into(),
-            bytes: b"1".to_vec(),
-        },
-        PayloadSpec {
-            path: "a.txt".into(),
-            bytes: b"2".to_vec(),
-        },
+        PayloadSpec { path: "a.txt".into(), bytes: b"1".to_vec() },
+        PayloadSpec { path: "a.txt".into(), bytes: b"2".to_vec() },
     ];
     match generate(request) {
         Outcome::Err { error, .. } => assert!(error.message.contains("duplicate")),
@@ -214,10 +155,7 @@ fn quine_rejects_duplicate_and_conflicting_paths() {
 
     let mut request = GenerateRequest::bare(VariantKind::Quine);
     request.topology = TopologyGraph::quine_self("root", "nest/self.zip");
-    request.payloads = vec![PayloadSpec {
-        path: "nest".into(),
-        bytes: b"file-vs-dir".to_vec(),
-    }];
+    request.payloads = vec![PayloadSpec { path: "nest".into(), bytes: b"file-vs-dir".to_vec() }];
     match generate(request) {
         Outcome::Err { error, .. } => assert!(error.message.contains("conflict")),
         Outcome::Ok { .. } => panic!("file/dir conflict must fail"),

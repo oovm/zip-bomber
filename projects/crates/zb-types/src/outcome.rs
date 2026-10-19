@@ -31,20 +31,12 @@ pub enum Outcome<T> {
 impl<T> Outcome<T> {
     /// Build a success outcome.
     pub fn ok(value: T, report: GenerateReport) -> Self {
-        Self::Ok {
-            ok: true,
-            value,
-            report,
-        }
+        Self::Ok { ok: true, value, report }
     }
 
     /// Build a failure outcome.
     pub fn err(error: ZbError, report: GenerateReport) -> Self {
-        Self::Err {
-            ok: false,
-            error,
-            report,
-        }
+        Self::Err { ok: false, error, report }
     }
 
     /// Whether the outcome is success.

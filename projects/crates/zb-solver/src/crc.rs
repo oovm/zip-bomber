@@ -13,11 +13,7 @@ const fn crc_table() -> [u32; 256] {
         let mut state = i as u32;
         let mut bit = 0;
         while bit < 8 {
-            state = if state & 1 != 0 {
-                (state >> 1) ^ CRC32_POLY
-            } else {
-                state >> 1
-            };
+            state = if state & 1 != 0 { (state >> 1) ^ CRC32_POLY } else { state >> 1 };
             bit += 1;
         }
         table[i] = state;
@@ -59,11 +55,7 @@ pub fn crc32_affine_columns(template: &[Option<u8>], target: u32) -> (u32, Vec<[
     for i in 0..template.len() {
         if template[i].is_none() {
             for bit in 0..8u8 {
-                let col = shift_state(
-                    crc_state_byte(0, 1u8 << bit),
-                    template.len() - i - 1,
-                    &powers,
-                );
+                let col = shift_state(crc_state_byte(0, 1u8 << bit), template.len() - i - 1, &powers);
                 columns[variable_start + usize::from(bit)] = u32_to_bits(col);
             }
             variable_start += 8;
@@ -125,37 +117,24 @@ pub struct CrcByteSlot {
 /// variable order, then least-significant bit first. Duplicate offsets and
 /// out-of-range variables are rejected. Complexity is one input scan plus
 /// O(slot_count * 8 * 32 * log(length)) bit operations, with no unit buffers.
-pub fn crc32_shared_columns(
-    bytes: &[u8],
-    slots: &[CrcByteSlot],
-    variable_bytes: usize,
-) -> zb_types::ZbResult<(u32, Vec<u32>)> {
+pub fn crc32_shared_columns(bytes: &[u8], slots: &[CrcByteSlot], variable_bytes: usize) -> zb_types::ZbResult<(u32, Vec<u32>)> {
     use zb_types::{ErrorCode, ZbError};
     let mut ordered = slots.to_vec();
     ordered.sort_by_key(|slot| slot.offset);
-    if ordered
-        .iter()
-        .any(|s| s.offset >= bytes.len() || s.variable >= variable_bytes)
+    if ordered.iter().any(|s| s.offset >= bytes.len() || s.variable >= variable_bytes)
         || ordered.windows(2).any(|s| s[0].offset == s[1].offset)
     {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            "invalid or overlapping CRC variable slots",
-        ));
+        return Err(ZbError::new(ErrorCode::Internal, "invalid or overlapping CRC variable slots"));
     }
-    let column_count = variable_bytes
-        .checked_mul(8)
-        .ok_or_else(|| ZbError::resource_limited("CRC column count overflow"))?;
+    let column_count = variable_bytes.checked_mul(8).ok_or_else(|| ZbError::resource_limited("CRC column count overflow"))?;
     let mut state = u32::MAX;
     let mut cursor = 0;
     for (offset, &byte) in bytes.iter().enumerate() {
-        if ordered
-            .get(cursor)
-            .is_some_and(|slot| slot.offset == offset)
-        {
+        if ordered.get(cursor).is_some_and(|slot| slot.offset == offset) {
             state = crc_state_byte(state, 0);
             cursor += 1;
-        } else {
+        }
+        else {
             state = crc_state_byte(state, byte);
         }
     }
@@ -163,11 +142,8 @@ pub fn crc32_shared_columns(
     let mut columns = vec![0; column_count];
     for slot in &ordered {
         for bit in 0..8 {
-            columns[slot.variable * 8 + bit] ^= shift_state(
-                crc_state_byte(0, 1u8 << bit),
-                bytes.len() - slot.offset - 1,
-                &powers,
-            );
+            columns[slot.variable * 8 + bit] ^=
+                shift_state(crc_state_byte(0, 1u8 << bit), bytes.len() - slot.offset - 1, &powers);
         }
     }
     Ok((!state, columns))

@@ -51,7 +51,7 @@ export function runGenerateInWorker(
                 exitCode: 2,
                 ok: false,
                 reportJson: JSON.stringify({
-                    schema: "zb.report/v1",
+                    schema: "zb.report/v0",
                     status: "error",
                     warnings: [],
                     error_code: "ZB_INTERNAL",
@@ -67,7 +67,7 @@ export function runGenerateInWorker(
                 exitCode: 2,
                 ok: false,
                 reportJson: JSON.stringify({
-                    schema: "zb.report/v1",
+                    schema: "zb.report/v0",
                     status: "error",
                     warnings: [],
                     error_code: "ZB_INTERNAL",

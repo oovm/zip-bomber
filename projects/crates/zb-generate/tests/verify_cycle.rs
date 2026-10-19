@@ -1,16 +1,12 @@
-use zb_generate::{
-    generate, minimum_byte_period, verify_artifact_set_for_request, verify_artifact_set_with_spec,
-};
-use zb_types::{
-    generate_request_from_json, ErrorCategory, ErrorCode, Outcome, VerificationSpec, VerifyEdgeSpec,
-};
+use zb_generate::{generate, minimum_byte_period, verify_artifact_set_for_request, verify_artifact_set_with_spec};
+use zb_types::{ErrorCategory, ErrorCode, Outcome, VerificationSpec, VerifyEdgeSpec, generate_request_from_json};
 
 fn two_node_loopy() -> zb_types::GenerateRequest {
     generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":[
                 {"members":[
                     {"kind":"payload","path":"a.txt","bytes":"YWJj"},
@@ -38,7 +34,8 @@ fn minimum_period_detects_collapse_and_full_cycle() {
 #[test]
 fn loopy_artifact_set_verifies_edges_and_period() {
     let request = two_node_loopy();
-    let Outcome::Ok { value, report, .. } = generate(request.clone()) else {
+    let Outcome::Ok { value, report, .. } = generate(request.clone())
+    else {
         panic!("generate must succeed");
     };
     assert!(report.loopy.as_ref().unwrap().edges.iter().all(|e| e.bytes_equal));
@@ -55,19 +52,13 @@ fn loopy_artifact_set_verifies_edges_and_period() {
 #[test]
 fn wrong_expected_period_is_period_mismatch() {
     let request = two_node_loopy();
-    let Outcome::Ok { value, .. } = generate(request.clone()) else {
+    let Outcome::Ok { value, .. } = generate(request.clone())
+    else {
         panic!("generate must succeed");
     };
-    let edges = zb_generate::cycle_edges_from_graph(&value, request.graph.as_ref().unwrap())
-        .expect("edges");
-    let err = verify_artifact_set_with_spec(
-        &value,
-        &VerificationSpec {
-            edges,
-            expected_byte_period: Some(1),
-        },
-    )
-    .expect_err("period 1 must fail for distinct two-node loop");
+    let edges = zb_generate::cycle_edges_from_graph(&value, request.graph.as_ref().unwrap()).expect("edges");
+    let err = verify_artifact_set_with_spec(&value, &VerificationSpec { edges, expected_byte_period: Some(1) })
+        .expect_err("period 1 must fail for distinct two-node loop");
     assert_eq!(err.code, ErrorCode::PeriodMismatch);
     assert_eq!(err.category, ErrorCategory::PeriodMismatch);
 }
@@ -75,7 +66,8 @@ fn wrong_expected_period_is_period_mismatch() {
 #[test]
 fn wrong_edge_target_fails_verification() {
     let request = two_node_loopy();
-    let Outcome::Ok { value, .. } = generate(request) else {
+    let Outcome::Ok { value, .. } = generate(request)
+    else {
         panic!("generate must succeed");
     };
     // Point the recursive member at the source artifact instead of its peer.

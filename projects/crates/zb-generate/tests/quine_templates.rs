@@ -13,15 +13,12 @@ fn generated_quine_is_complete_and_self_identical() {
     let request = GenerateRequest::bare(VariantKind::Quine);
     let set = match generate(request.clone()) {
         Outcome::Ok { value, report, .. } => {
-            assert_eq!(report.schema, zb_types::REPORT_SCHEMA_V2);
+            assert_eq!(report.schema, zb_types::REPORT_SCHEMA);
             assert_eq!(report.profile.as_deref(), Some(ZIP_PROFILE_V0));
             let solver = report.solver.expect("solver facts");
             assert!(solver.rank > 0);
             assert_eq!(solver.equations_used, 32);
-            assert_eq!(
-                solver.problem_digest.as_deref(),
-                Some("quine.crc.shared/v1")
-            );
+            assert_eq!(solver.problem_digest.as_deref(), Some("quine.crc.shared/v0"));
             let usage = report.budget_usage.expect("budget usage");
             assert!(usage.members_decoded > 0);
             assert!(usage.decoded_bytes_used > 0);
@@ -32,8 +29,7 @@ fn generated_quine_is_complete_and_self_identical() {
     let bytes = &set.artifacts[0].bytes;
     let start = 30 + request.topology.edges[0].member_path.len();
     let compressed = u32::from_le_bytes(bytes[18..22].try_into().unwrap()) as usize;
-    let decoded = decode_raw_deflate(&bytes[start..start + compressed], bytes.len() as u64)
-        .expect("inflate self member");
+    let decoded = decode_raw_deflate(&bytes[start..start + compressed], bytes.len() as u64).expect("inflate self member");
     assert_eq!(&decoded, bytes);
     assert!(verify_zip_bytes(bytes).unwrap().ok);
 }

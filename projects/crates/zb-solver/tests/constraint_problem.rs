@@ -1,16 +1,11 @@
 use zb_solver::{
-    crc32, crc_identity_residual_problem, solve_crc_identity_blocks, solve_problem,
-    solve_shared_crc_with_cancel, ByteEquation, ByteExpr, ByteTerm, ChecksumAlgorithm,
-    ChecksumConstraint, ConstraintProblem, CrcByteSlot, EquationId, LinearEquation,
-    SharedCrcArchive, SolveOutcome, SolverBudget, VariableId,
+    ByteEquation, ByteExpr, ByteTerm, ChecksumAlgorithm, ChecksumConstraint, ConstraintProblem, CrcByteSlot, EquationId,
+    LinearEquation, SharedCrcArchive, SolveOutcome, SolverBudget, VariableId, crc_identity_residual_problem, crc32,
+    solve_crc_identity_blocks, solve_problem, solve_shared_crc_with_cancel,
 };
 
 fn eq(id: u32, vars: &[u32], rhs: bool) -> LinearEquation {
-    LinearEquation {
-        id: EquationId(id),
-        variables: vars.iter().copied().map(VariableId).collect(),
-        rhs,
-    }
+    LinearEquation { id: EquationId(id), variables: vars.iter().copied().map(VariableId).collect(), rhs }
 }
 
 #[test]
@@ -24,11 +19,7 @@ fn solves_unique_system_with_evidence() {
         problem_digest: Some("demo".into()),
     };
     match solve_problem(&problem) {
-        SolveOutcome::Sat {
-            assignment,
-            unique,
-            evidence,
-        } => {
+        SolveOutcome::Sat { assignment, unique, evidence } => {
             assert_eq!(assignment.bits, vec![false, true]);
             assert!(unique);
             assert_eq!(evidence.rank, 2);
@@ -51,10 +42,7 @@ fn reports_unsat_on_inconsistent_rows() {
         problem_digest: None,
     };
     match solve_problem(&problem) {
-        SolveOutcome::Unsat {
-            message,
-            conflicting_equation,
-        } => {
+        SolveOutcome::Unsat { message, conflicting_equation } => {
             assert!(message.contains("gf2_inconsistent_row="));
             assert_eq!(conflicting_equation, Some(EquationId(2)));
         }
@@ -73,11 +61,7 @@ fn forces_free_variables_to_zero() {
         problem_digest: None,
     };
     match solve_problem(&problem) {
-        SolveOutcome::Sat {
-            assignment,
-            unique,
-            evidence,
-        } => {
+        SolveOutcome::Sat { assignment, unique, evidence } => {
             assert_eq!(assignment.bits, vec![true, false]);
             assert!(!unique);
             assert_eq!(evidence.rank, 1);
@@ -129,18 +113,10 @@ fn crc_identity_residual_matches_manual_i_xor_m() {
     // M = 0, so equations are just x_i = b_i for a 32-bit word.
     let columns = vec![0u32; 32];
     let constant = 0xA5A5_5A5A_u32;
-    let outcome = solve_crc_identity_blocks(
-        &[(constant, columns.as_slice())],
-        32,
-        SolverBudget::default(),
-        Some("crc-id".into()),
-    );
+    let outcome =
+        solve_crc_identity_blocks(&[(constant, columns.as_slice())], 32, SolverBudget::default(), Some("crc-id".into()));
     match outcome {
-        SolveOutcome::Sat {
-            assignment,
-            unique,
-            evidence,
-        } => {
+        SolveOutcome::Sat { assignment, unique, evidence } => {
             assert!(unique);
             assert_eq!(evidence.rank, 32);
             let mut value = 0u32;
@@ -158,12 +134,7 @@ fn crc_identity_residual_matches_manual_i_xor_m() {
 #[test]
 fn crc_identity_rejects_short_column_block() {
     let columns = vec![0u32; 16];
-    match crc_identity_residual_problem(
-        &[(0, columns.as_slice())],
-        32,
-        SolverBudget::default(),
-        None,
-    ) {
+    match crc_identity_residual_problem(&[(0, columns.as_slice())], 32, SolverBudget::default(), None) {
         Err(SolveOutcome::InvalidProblem { message }) => {
             assert!(message.contains("expected 32"));
         }
@@ -178,11 +149,7 @@ fn enforces_matrix_bit_budget() {
         equations: vec![eq(1, &[0], true), eq(2, &[1], false)],
         byte_equations: Vec::new(),
         checksums: Vec::new(),
-        budget: SolverBudget {
-            max_variables: 64,
-            max_equations: 64,
-            max_matrix_bits: 4,
-        },
+        budget: SolverBudget { max_variables: 64, max_equations: 64, max_matrix_bits: 4 },
         problem_digest: None,
     };
     match solve_problem(&problem) {
@@ -194,11 +161,7 @@ fn enforces_matrix_bit_budget() {
 }
 
 fn byte_eq(id: u32, left: ByteTerm, right: ByteTerm) -> ByteEquation {
-    ByteEquation {
-        id: EquationId(id),
-        left,
-        right,
-    }
+    ByteEquation { id: EquationId(id), left, right }
 }
 
 #[test]
@@ -240,10 +203,7 @@ fn byte_constant_conflict_names_equation() {
         problem_digest: None,
     };
     match solve_problem(&problem) {
-        SolveOutcome::Unsat {
-            conflicting_equation,
-            ..
-        } => assert_eq!(conflicting_equation, Some(EquationId(2))),
+        SolveOutcome::Unsat { conflicting_equation, .. } => assert_eq!(conflicting_equation, Some(EquationId(2))),
         other => panic!("expected Unsat, got {other:?}"),
     }
 }
@@ -322,10 +282,7 @@ fn checksum_rejects_wrong_constant_and_names_equation() {
         problem_digest: None,
     };
     match solve_problem(&problem) {
-        SolveOutcome::Unsat {
-            conflicting_equation,
-            ..
-        } => assert_eq!(conflicting_equation, Some(EquationId(7))),
+        SolveOutcome::Unsat { conflicting_equation, .. } => assert_eq!(conflicting_equation, Some(EquationId(7))),
         other => panic!("expected Unsat, got {other:?}"),
     }
 }
@@ -339,19 +296,14 @@ fn checksum_solves_one_affine_byte() {
         checksums: vec![ChecksumConstraint {
             id: EquationId(3),
             algorithm: ChecksumAlgorithm::Crc32Ieee,
-            message: vec![ByteExpr::Xor(vec![
-                ByteExpr::Constant(0x01),
-                ByteExpr::Variable(0),
-            ])],
+            message: vec![ByteExpr::Xor(vec![ByteExpr::Constant(0x01), ByteExpr::Variable(0)])],
             target: le_target(crc32(&[0x43])),
         }],
         budget: SolverBudget::default(),
         problem_digest: None,
     };
     match solve_problem(&problem) {
-        SolveOutcome::Sat {
-            assignment, unique, ..
-        } => {
+        SolveOutcome::Sat { assignment, unique, .. } => {
             assert!(unique);
             let mut value = 0u8;
             for bit in 0..8 {
@@ -371,29 +323,13 @@ fn shared_crc_helper_matches_direct_checksum() {
     let mut bytes = b"hello!!!!".to_vec();
     // Reserve four trailing bytes as the LE CRC word (placeholders).
     let slots = [
-        CrcByteSlot {
-            offset: 5,
-            variable: 0,
-        },
-        CrcByteSlot {
-            offset: 6,
-            variable: 1,
-        },
-        CrcByteSlot {
-            offset: 7,
-            variable: 2,
-        },
-        CrcByteSlot {
-            offset: 8,
-            variable: 3,
-        },
+        CrcByteSlot { offset: 5, variable: 0 },
+        CrcByteSlot { offset: 6, variable: 1 },
+        CrcByteSlot { offset: 7, variable: 2 },
+        CrcByteSlot { offset: 8, variable: 3 },
     ];
     let outcome = solve_shared_crc_with_cancel(
-        &[SharedCrcArchive {
-            bytes: &bytes,
-            slots: &slots,
-            target_byte_vars: [0, 1, 2, 3],
-        }],
+        &[SharedCrcArchive { bytes: &bytes, slots: &slots, target_byte_vars: [0, 1, 2, 3] }],
         4,
         SolverBudget::default(),
         Some("shared-crc-demo".into()),

@@ -7,7 +7,7 @@ pub const ZIP_PROFILE_V0: &str = "zip.profile/v0-stub";
 
 /// Explicit opt-in profile for two-node Loopy / Fractal recursive construction
 /// with a duplicated early directory gap (Living `11`).
-pub const ZIP_LOOPY_TWO_NODE_GAPPED_V1: &str = "zip.loopy-two-node.gapped/v1";
+pub const ZIP_LOOPY_TWO_NODE_GAPPED_V0: &str = "zip.loopy-two-node.gapped/v0";
 
 /// Fixed sizes from APPNOTE / Living `05` (not estimates).
 pub mod zip_layout {
@@ -76,7 +76,7 @@ impl ZipProfile {
     /// Two-node Loopy gapped profile (Living `11` §5).
     pub fn loopy_two_node_gapped_v1() -> Self {
         Self {
-            id: ZIP_LOOPY_TWO_NODE_GAPPED_V1.to_string(),
+            id: ZIP_LOOPY_TWO_NODE_GAPPED_V0.to_string(),
             single_volume: true,
             allow_encryption: false,
             allow_data_descriptor: false,

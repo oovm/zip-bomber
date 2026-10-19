@@ -21,7 +21,7 @@ test("wasm worker abort returns cancelled and terminates the worker", async () =
     const worker = new HungWorker();
     const pending = runGenerateInWorker(
         new URL("file:///generate-worker.js"),
-        JSON.stringify({ schema: "zb.request/v2", variant: "quine" }),
+        JSON.stringify({ schema: "zb.request/v0", variant: "quine" }),
         controller.signal,
         () => worker as unknown as Worker,
     );
@@ -44,7 +44,7 @@ test("wasm worker success maps generate payload", async () => {
                     payload: JSON.stringify({
                         ok: true,
                         bytesBase64: "aGk=",
-                        report: { schema: "zb.report/v2", status: "ok", warnings: [] },
+                        report: { schema: "zb.report/v0", status: "ok", warnings: [] },
                     }),
                 },
             } as MessageEvent);

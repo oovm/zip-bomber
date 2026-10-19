@@ -1,5 +1,5 @@
 use zb_generate::generate;
-use zb_types::{generate_request_from_json, Outcome};
+use zb_types::{Outcome, generate_request_from_json};
 
 fn request(with_dir: bool) -> zb_types::GenerateRequest {
     let mut nodes = serde_json::json!([
@@ -13,16 +13,13 @@ fn request(with_dir: bool) -> zb_types::GenerateRequest {
         ]}
     ]);
     if with_dir {
-        nodes[0]["members"].as_array_mut().unwrap().insert(
-            1,
-            serde_json::json!({"kind":"payload","path":"empty/","bytes":""}),
-        );
+        nodes[0]["members"].as_array_mut().unwrap().insert(1, serde_json::json!({"kind":"payload","path":"empty/","bytes":""}));
     }
     generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":nodes}
         })
         .to_string(),
@@ -46,10 +43,7 @@ fn loopy_with_directory_on_one_side() {
             assert_ne!(value.artifacts[0].bytes, value.artifacts[1].bytes);
         }
         Outcome::Err { error, .. } => {
-            panic!(
-                "category={:?} code={:?} message={}",
-                error.category, error.code, error.message
-            );
+            panic!("category={:?} code={:?} message={}", error.category, error.code, error.message);
         }
     }
 }
@@ -58,9 +52,9 @@ fn loopy_with_directory_on_one_side() {
 fn loopy_with_directory_on_both_sides() {
     let request = generate_request_from_json(
         &serde_json::json!({
-            "schema":"zb.request/v2",
+            "schema":"zb.request/v0",
             "variant":"loopy",
-            "profile":"zip.loopy-two-node.gapped/v1",
+            "profile":"zip.loopy-two-node.gapped/v0",
             "graph":{"root":0,"mode":"recursive","nodes":[
                 {"members":[
                     {"kind":"payload","path":"a.txt","bytes":"YWJj"},

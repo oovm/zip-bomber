@@ -7,15 +7,13 @@
 mod decode;
 
 use acorn_codec::{
-    bit::BitWriter,
-    compression::deflate::{write_fixed_block, write_stored_block, Symbol},
     CodecError,
+    bit::BitWriter,
+    compression::deflate::{Symbol, write_fixed_block, write_stored_block},
 };
-use zb_types::{zip_layout, ErrorCode, GenerateRequest, ZbError, ZbResult};
+use zb_types::{ErrorCode, GenerateRequest, ZbError, ZbResult, zip_layout};
 
-pub use acorn_codec::compression::deflate::{
-    DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock,
-};
+pub use acorn_codec::compression::deflate::{DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock};
 pub use decode::{decode_raw_deflate, decode_raw_deflate_with_ledger};
 
 /// Maps an Acorn codec error raised while emitting a planned DEFLATE block.
@@ -26,18 +24,11 @@ pub(crate) fn block_error(error: CodecError) -> ZbError {
     if error.is_resource_limit() {
         return ZbError::resource_limited(format!("deflate block emit rejected: {error}"));
     }
-    ZbError::new(
-        ErrorCode::Internal,
-        format!("deflate block emit rejected: {error}"),
-    )
+    ZbError::new(ErrorCode::Internal, format!("deflate block emit rejected: {error}"))
 }
 
 /// Writes one fixed-Huffman block at the writer's current bit position.
-pub(crate) fn write_fixed(
-    writer: &mut BitWriter,
-    symbols: &[Symbol],
-    final_block: bool,
-) -> ZbResult<()> {
+pub(crate) fn write_fixed(writer: &mut BitWriter, symbols: &[Symbol], final_block: bool) -> ZbResult<()> {
     write_fixed_block(writer, symbols, final_block).map_err(block_error)
 }
 
@@ -49,10 +40,7 @@ pub(crate) fn write_stored(writer: &mut BitWriter, data: &[u8], final_block: boo
 /// Encodes a payload as a single final stored block.
 pub fn encode_stored_stream(payload: &[u8]) -> ZbResult<Vec<u8>> {
     let mut plan = DeflateBlockPlan::new();
-    plan.push(
-        DeflateBlock::Stored(StoredBlock::new(payload.to_vec())),
-        true,
-    );
+    plan.push(DeflateBlock::Stored(StoredBlock::new(payload.to_vec())), true);
     plan.encode().map_err(block_error)
 }
 
@@ -72,9 +60,7 @@ pub struct DeflatePlan {
 
 /// Plan DEFLATE emission. Template enables chaining flag only.
 pub fn plan(_request: &GenerateRequest) -> DeflatePlan {
-    DeflatePlan {
-        chained_repeats: true,
-    }
+    DeflatePlan { chained_repeats: true }
 }
 
 /// One fixed skeleton instruction (Living `05` §4 initial subset).
@@ -97,24 +83,14 @@ pub enum SkeletonOp {
 
 /// Validate a repeat token against RFC 1951 windows and already-emitted bytes.
 pub fn validate_repeat(length: u16, distance: u16, emitted: usize) -> ZbResult<()> {
-    if !(zip_layout::DEFLATE_LEN_MIN as u16..=zip_layout::DEFLATE_LEN_MAX as u16).contains(&length)
-    {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            format!("DEFLATE length {length} out of 3..=258"),
-        ));
+    if !(zip_layout::DEFLATE_LEN_MIN as u16..=zip_layout::DEFLATE_LEN_MAX as u16).contains(&length) {
+        return Err(ZbError::new(ErrorCode::Internal, format!("DEFLATE length {length} out of 3..=258")));
     }
     if distance == 0 || u32::from(distance) > zip_layout::DEFLATE_DIST_MAX {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            format!("DEFLATE distance {distance} out of 1..=32768"),
-        ));
+        return Err(ZbError::new(ErrorCode::Internal, format!("DEFLATE distance {distance} out of 1..=32768")));
     }
     if usize::from(distance) > emitted {
-        return Err(ZbError::new(
-            ErrorCode::Internal,
-            format!("DEFLATE distance {distance} exceeds emitted {emitted}"),
-        ));
+        return Err(ZbError::new(ErrorCode::Internal, format!("DEFLATE distance {distance} exceeds emitted {emitted}")));
     }
     Ok(())
 }
@@ -160,23 +136,15 @@ pub fn chain_repeats(total_length: u32, distance: u16) -> ZbResult<Vec<SkeletonO
             chunk -= zip_layout::DEFLATE_LEN_MIN - (remaining - chunk);
         }
         if chunk < zip_layout::DEFLATE_LEN_MIN && remaining == chunk {
-            return Err(ZbError::new(
-                ErrorCode::Internal,
-                "cannot encode remainder 1..=2 without adjusting prior segments",
-            ));
+            return Err(ZbError::new(ErrorCode::Internal, "cannot encode remainder 1..=2 without adjusting prior segments"));
         }
         let len = if chunk < zip_layout::DEFLATE_LEN_MIN {
-            return Err(ZbError::new(
-                ErrorCode::Internal,
-                "remainder 1..=2 requires prior segment adjustment",
-            ));
-        } else {
+            return Err(ZbError::new(ErrorCode::Internal, "remainder 1..=2 requires prior segment adjustment"));
+        }
+        else {
             chunk
         };
-        ops.push(SkeletonOp::Repeat {
-            length: len as u16,
-            distance,
-        });
+        ops.push(SkeletonOp::Repeat { length: len as u16, distance });
         remaining -= len;
     }
     Ok(ops)

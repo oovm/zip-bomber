@@ -299,45 +299,45 @@ export async function createZipBomber(): Promise<ZipBomberApi> {
 }
 
 /** Convenience: prefer native Bomb emit when the platform package is present. */
-export async function zipBomb(
+export async function bomb(
     options?: Partial<GenerateRequest>,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipBomb(options);
+        return await api.bomb(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipQuine(
+export async function quine(
     options?: Partial<GenerateRequest>,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipQuine(options);
+        return await api.quine(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipLoopy(
+export async function loopy(
     options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipLoopy(options);
+        return await api.loopy(options);
     } finally {
         await api.dispose();
     }
 }
 
-export async function zipFractal(
+export async function fractal(
     options?: Partial<GenerateRequest> | GraphSpec,
 ): Promise<Outcome<ArtifactSet>> {
     const api = await createZipBomber();
     try {
-        return await api.zipFractal(options);
+        return await api.fractal(options);
     } finally {
         await api.dispose();
     }

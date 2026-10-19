@@ -21,12 +21,12 @@ export type JobOutput = {
 };
 
 export type JobDocument = {
-    schema: "zb.job/v1";
+    schema: "zb.job/v0";
     container?: "zip";
     variant: VariantId;
     profile?: string;
     limits?: GenerateRequest["limits"];
-    selfMemberPath?: string;
+    fixedPoint?: string;
     graph?: {
         root: number;
         mode: "finite" | "recursive";
@@ -72,7 +72,7 @@ function resolveUnderJob(jobDir: string, relative: string): string {
     return resolved;
 }
 
-/** Load and materialize a host `zb.job/v1` document into a core request. */
+/** Load and materialize a host `zb.job/v0` document into a core request. */
 export async function loadJob(jobPath: string, remainingBudget: number): Promise<ResolvedJob> {
     const absolute = resolve(jobPath);
     const jobDir = dirname(absolute);
@@ -84,7 +84,7 @@ export async function loadJob(jobPath: string, remainingBudget: number): Promise
             message: error instanceof Error ? error.message : String(error),
         });
     }
-    if (!isPlainObject(raw) || raw.schema !== "zb.job/v1") {
+    if (!isPlainObject(raw) || raw.schema !== "zb.job/v0") {
         throw new InputError("zb.cli.err.jobSchema");
     }
     if (raw.container !== undefined && raw.container !== "zip") {
@@ -99,7 +99,7 @@ export async function loadJob(jobPath: string, remainingBudget: number): Promise
     if (raw.graph === undefined && variant !== "quine" && variant !== "bomb") {
         throw new InputError("zb.cli.err.jobGraphRequired", { variant });
     }
-    if (raw.selfMemberPath !== undefined && variant !== "quine") {
+    if (raw.fixedPoint !== undefined && variant !== "quine") {
         throw new InputError("zb.cli.err.quineOnly");
     }
 
@@ -223,13 +223,13 @@ export async function loadJob(jobPath: string, remainingBudget: number): Promise
         });
         const mode = raw.graph.mode === "finite" ? "finite" : "recursive";
         const request: GenerateRequest = {
-            schema: "zb.request/v2",
+            schema: "zb.request/v0",
             container: "zip",
             variant,
             profile: typeof raw.profile === "string"
                 ? raw.profile
                 : mode === "recursive"
-                    ? "zip.loopy-two-node.gapped/v1"
+                    ? "zip.loopy-two-node.gapped/v0"
                     : "zip.profile/v0-stub",
             limits: isPlainObject(raw.limits) ? raw.limits as GenerateRequest["limits"] : undefined,
             graph: {
@@ -256,12 +256,12 @@ export async function loadJob(jobPath: string, remainingBudget: number): Promise
     }));
     return {
         request: {
-            schema: "zb.request/v2",
+            schema: "zb.request/v0",
             container: "zip",
             variant,
             profile: typeof raw.profile === "string" ? raw.profile : undefined,
             limits: isPlainObject(raw.limits) ? raw.limits as GenerateRequest["limits"] : undefined,
-            selfMemberPath: typeof raw.selfMemberPath === "string" ? raw.selfMemberPath : undefined,
+            fixedPoint: typeof raw.fixedPoint === "string" ? raw.fixedPoint : undefined,
             payloads,
         },
         outputs: outputs as JobOutput[],
