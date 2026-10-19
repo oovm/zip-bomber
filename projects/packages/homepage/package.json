@@ -1,6 +1,6 @@
 {
     "name": "@sxo/homepage",
-    "version": "0.0.1",
+    "version": "0.0.0",
     "private": true,
     "type": "module",
     "description": "zip-bomber marketing homepage (VMZ static site with @sxo/zip-bomber probe)",

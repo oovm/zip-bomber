@@ -1,7 +1,7 @@
 /**
  * Publish zip-bomber npm packages via OIDC Trusted Publisher.
  *
- * Contract: file=publish-npm.yml env=NPM_PUBLISH repo=notedge/zip-bomber
+ * Contract: file=publish-npm.yml env=NPM_PUBLISH repo=oovm/zip-bomber
  */
 
 import { spawnSync } from "node:child_process";
@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const REPO_URL = "git+https://github.com/notedge/zip-bomber.git";
+const REPO_URL = "git+https://github.com/oovm/zip-bomber.git";
 
 const NATIVE_PLATFORMS = [
     {
@@ -237,7 +237,7 @@ function publishNative(version, artifactsRoot) {
         else if (outcome === "exists") skipped += 1;
         else if (outcome === "auth") {
             fail(
-                `OIDC/auth failed for ${name}. Configure Trusted Publisher: file=publish-npm.yml env=NPM_PUBLISH repo=notedge/zip-bomber`,
+                `OIDC/auth failed for ${name}. Configure Trusted Publisher: file=publish-npm.yml env=NPM_PUBLISH repo=oovm/zip-bomber`,
             );
         } else fail(`publish failed for ${name}`);
     }
@@ -296,7 +296,7 @@ function publishJs(version, artifactsRoot) {
         else if (outcome === "exists") skipped += 1;
         else if (outcome === "auth") {
             fail(
-                `OIDC/auth failed for ${name}. Configure Trusted Publisher: file=publish-npm.yml env=NPM_PUBLISH repo=notedge/zip-bomber`,
+                `OIDC/auth failed for ${name}. Configure Trusted Publisher: file=publish-npm.yml env=NPM_PUBLISH repo=oovm/zip-bomber`,
             );
         } else fail(`publish failed for ${name}`);
     }

@@ -9,7 +9,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.0"
 authors = ["Aster <192607617@qq.com>"]
 license = "MPL-2.0"
 edition = "2021"
