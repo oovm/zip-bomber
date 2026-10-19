@@ -2,6 +2,15 @@
     "name": "@sxo/zip-bomber-darwin-arm64",
     "version": "0.0.0",
     "description": "zip-bomber Node-API binary for macOS arm64",
+    "keywords": [
+        "zip",
+        "zip-bomb",
+        "napi",
+        "darwin",
+        "macos",
+        "arm64",
+        "native"
+    ],
     "license": "MPL-2.0",
     "author": "Aster <192607617@qq.com>",
     "homepage": "https://github.com/oovm/zip-bomber/tree/dev/projects/packages/zip-bomber-darwin-arm64#readme",

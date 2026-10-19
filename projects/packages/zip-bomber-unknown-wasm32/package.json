@@ -2,6 +2,14 @@
     "name": "@sxo/zip-bomber-unknown-wasm32",
     "version": "0.0.0",
     "description": "zip-bomber wasm-pack artifact for wasm32-unknown-unknown",
+    "keywords": [
+        "zip",
+        "zip-bomb",
+        "wasm",
+        "webassembly",
+        "zip-quine",
+        "browser"
+    ],
     "license": "MPL-2.0",
     "author": "Aster <192607617@qq.com>",
     "homepage": "https://github.com/oovm/zip-bomber/tree/dev/projects/packages/zip-bomber-unknown-wasm32#readme",

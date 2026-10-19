@@ -2,6 +2,14 @@
     "name": "@sxo/zip-bomber-linux-x64",
     "version": "0.0.0",
     "description": "zip-bomber Node-API binary for Linux x64",
+    "keywords": [
+        "zip",
+        "zip-bomb",
+        "napi",
+        "linux",
+        "x64",
+        "native"
+    ],
     "license": "MPL-2.0",
     "author": "Aster <192607617@qq.com>",
     "homepage": "https://github.com/oovm/zip-bomber/tree/dev/projects/packages/zip-bomber-linux-x64#readme",
