@@ -1,6 +1,6 @@
 {
     "name": "@sxo/zip-bomber-linux-x64",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "description": "zip-bomber Node-API binary for Linux x64",
     "keywords": [
         "zip",

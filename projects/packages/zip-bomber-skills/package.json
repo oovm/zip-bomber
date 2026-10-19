@@ -1,6 +1,6 @@
 {
     "name": "@sxo/zip-bomber-skills",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "description": "Agent skills for zip-bomber. Recursive ZIP / zip-bomb variant generation with @sxo/zip-bomber.",
     "keywords": [
         "zip-bomber",

@@ -1,6 +1,6 @@
 {
     "name": "@sxo/zip-bomber-unknown-wasm32",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "description": "zip-bomber wasm-pack artifact for wasm32-unknown-unknown",
     "keywords": [
         "zip",

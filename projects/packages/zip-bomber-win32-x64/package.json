@@ -1,6 +1,6 @@
 {
     "name": "@sxo/zip-bomber-win32-x64",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "description": "zip-bomber Node-API binary for Windows x64",
     "keywords": [
         "zip",
