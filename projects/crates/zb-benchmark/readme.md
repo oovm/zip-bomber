@@ -1,9 +1,9 @@
-# zb-benchmark
+# ⏱️ zb-benchmark
 
-Simple timing probes for zb Quine generation and CRC column construction.
+Timing probes for the expensive inner loops: CRC column construction and recursive generation.
 
-```powershell
+```bash
 cargo run -p zb-benchmark --release
 ```
 
-Output lines are stable `key=value` tokens for scripting. This crate is not published.
+It prints stable `key=value` lines so a run can be compared or scraped. It is a development aid and is not published.
