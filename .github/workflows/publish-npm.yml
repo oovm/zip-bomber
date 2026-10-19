@@ -77,6 +77,9 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout the sibling acorn.rs workspace
+        run: git clone --depth 1 --branch dev https://github.com/yggdrasil-language/acorn.rs ../acorn.rs
+
       - uses: dtolnay/rust-toolchain@nightly
 
       - uses: Swatinem/rust-cache@v2
@@ -130,6 +133,9 @@ jobs:
         with:
           ref: refs/tags/${{ needs.provenance.outputs.tag }}
           fetch-depth: 0
+
+      - name: Checkout the sibling acorn.rs workspace
+        run: git clone --depth 1 --branch dev https://github.com/yggdrasil-language/acorn.rs ../acorn.rs
 
       - uses: dtolnay/rust-toolchain@nightly
         with:
