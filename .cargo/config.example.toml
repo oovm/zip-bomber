@@ -1,4 +1,4 @@
-# Copy to `config.toml` (gitignored) when sibling repos exist.
+# Copy to `config.toml` (git ignored) and replace `<your-path>` with your local absolute path.
 
 [patch."https://github.com/yggdrasil-language/acorn.rs.git"]
 acorn-core = { path = "<your-path>/acorn.rs/projects/acorn-core" }
